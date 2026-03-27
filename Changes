@@ -1,0 +1,7 @@
+Revision history for Net-LibSSH
+
+{{$NEXT}}
+  - Initial release
+  - Session: connect, auth_password, auth_publickey, auth_agent
+  - Channel: exec, read, write, eof, exit_status
+  - SFTP: stat (graceful undef when SFTP subsystem absent)
