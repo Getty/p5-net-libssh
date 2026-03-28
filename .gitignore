@@ -1,0 +1,9 @@
+Makefile.PL
+Makefile
+MYMETA.*
+blib/
+*.o
+*.so
+LibSSH.c
+LibSSH.xsc
+LibSSH.bs
