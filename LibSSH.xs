@@ -2,20 +2,75 @@
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSUB.h"
+#define NEED_mg_findext
 #include "ppport.h"
 
 #include <libssh/libssh.h>
 #include <libssh/sftp.h>
 
+#define undef &PL_sv_undef
+
 /* ====================================================
-   Internal structs — typedef'd to Net__Foo__Bar names so
-   xsubpp's T_PTROBJ can derive the Perl class automatically
-   (__ becomes :: in the blessed package name).
+   Internal structs (named so Newxz has a type to size)
    ==================================================== */
 
-typedef struct { ssh_session session;                   } Net__LibSSH;
-typedef struct { ssh_channel channel; SV *session_sv;  } Net__LibSSH__Channel;
-typedef struct { sftp_session sftp;   SV *session_sv;  } Net__LibSSH__SFTP;
+typedef struct { ssh_session  session;                 } NLSS_Session;
+typedef struct { ssh_channel  channel; SV *session_sv; } NLSS_Channel;
+typedef struct { sftp_session sftp;    SV *session_sv; } NLSS_SFTP;
+
+/* Pointer typedefs with the xsubpp __ → :: naming convention.
+   Using pointer typedefs (not struct typedefs) means XS signatures
+   need no *, and ${type} in typemap templates resolves cleanly to
+   e.g. Net__LibSSH — making &${type}_magic valid C. */
+typedef NLSS_Session *Net__LibSSH;
+typedef NLSS_Channel *Net__LibSSH__Channel;
+typedef NLSS_SFTP    *Net__LibSSH__SFTP;
+
+/* ====================================================
+   Magic vtables — svt_free replaces DESTROY in XS.
+   Perl's GC calls svt_free automatically when the SV
+   is collected; no explicit DESTROY method needed.
+   ==================================================== */
+
+static int
+nlss_session_free(pTHX_ SV *sv, MAGIC *mg)
+{
+    NLSS_Session *self = (NLSS_Session *)(void *)mg->mg_ptr;
+    if (self->session) {
+        ssh_disconnect(self->session);
+        ssh_free(self->session);
+    }
+    Safefree(self);
+    return 0;
+}
+static const MGVTBL Net__LibSSH_magic = { .svt_free = nlss_session_free };
+
+static int
+nlss_channel_free(pTHX_ SV *sv, MAGIC *mg)
+{
+    NLSS_Channel *self = (NLSS_Channel *)(void *)mg->mg_ptr;
+    if (self->channel) {
+        ssh_channel_send_eof(self->channel);
+        ssh_channel_close(self->channel);
+        ssh_channel_free(self->channel);
+    }
+    SvREFCNT_dec(self->session_sv);
+    Safefree(self);
+    return 0;
+}
+static const MGVTBL Net__LibSSH__Channel_magic = { .svt_free = nlss_channel_free };
+
+static int
+nlss_sftp_free(pTHX_ SV *sv, MAGIC *mg)
+{
+    NLSS_SFTP *self = (NLSS_SFTP *)(void *)mg->mg_ptr;
+    if (self->sftp)
+        sftp_free(self->sftp);
+    SvREFCNT_dec(self->session_sv);
+    Safefree(self);
+    return 0;
+}
+static const MGVTBL Net__LibSSH__SFTP_magic = { .svt_free = nlss_sftp_free };
 
 /* ====================================================
    Helper functions
@@ -47,11 +102,11 @@ MODULE = Net::LibSSH    PACKAGE = Net::LibSSH
 
 PROTOTYPES: DISABLE
 
-Net__LibSSH *
+Net::LibSSH
 new(class)
     SV *class
   CODE:
-    Newxz(RETVAL, 1, Net__LibSSH);
+    Newxz(RETVAL, 1, NLSS_Session);
     RETVAL->session = ssh_new();
     if (!RETVAL->session) {
         Safefree(RETVAL);
@@ -61,19 +116,8 @@ new(class)
     RETVAL
 
 void
-DESTROY(self)
-    Net__LibSSH *self
-  CODE:
-    if (self->session) {
-        ssh_disconnect(self->session);
-        ssh_free(self->session);
-        self->session = NULL;
-    }
-    Safefree(self);
-
-void
 option(self, key, value)
-    Net__LibSSH *self
+    Net::LibSSH  self
     const char  *key
     SV          *value
   CODE:
@@ -106,7 +150,7 @@ option(self, key, value)
 
 int
 connect(self)
-    Net__LibSSH *self
+    Net::LibSSH self
   CODE:
     RETVAL = (ssh_connect(self->session) == SSH_OK) ? 1 : 0;
   OUTPUT:
@@ -114,22 +158,22 @@ connect(self)
 
 void
 disconnect(self)
-    Net__LibSSH *self
+    Net::LibSSH self
   CODE:
     ssh_disconnect(self->session);
 
 SV *
 error(self)
-    Net__LibSSH *self
+    Net::LibSSH self
   CODE:
     const char *msg = ssh_get_error(self->session);
-    RETVAL = (msg && *msg) ? newSVpv(msg, 0) : &PL_sv_undef;
+    RETVAL = (msg && *msg) ? newSVpv(msg, 0) : undef;
   OUTPUT:
     RETVAL
 
 int
 auth_password(self, password)
-    Net__LibSSH *self
+    Net::LibSSH  self
     const char  *password
   CODE:
     RETVAL = (ssh_userauth_password(self->session, NULL, password)
@@ -139,7 +183,7 @@ auth_password(self, password)
 
 int
 auth_agent(self)
-    Net__LibSSH *self
+    Net::LibSSH self
   CODE:
     int rc = ssh_userauth_agent(self->session, NULL);
     if (rc != SSH_AUTH_SUCCESS)
@@ -150,7 +194,7 @@ auth_agent(self)
 
 int
 auth_publickey(self, privkey_path)
-    Net__LibSSH *self
+    Net::LibSSH  self
     const char  *privkey_path
   CODE:
     ssh_key key = NULL;
@@ -165,9 +209,9 @@ auth_publickey(self, privkey_path)
   OUTPUT:
     RETVAL
 
-Net__LibSSH__Channel *
+Net::LibSSH::Channel
 channel(self)
-    Net__LibSSH *self
+    Net::LibSSH self
   CODE:
     ssh_channel ch = ssh_channel_new(self->session);
     if (!ch)
@@ -176,15 +220,15 @@ channel(self)
         ssh_channel_free(ch);
         XSRETURN_UNDEF;
     }
-    Newxz(RETVAL, 1, Net__LibSSH__Channel);
+    Newxz(RETVAL, 1, NLSS_Channel);
     RETVAL->channel    = ch;
     RETVAL->session_sv = SvREFCNT_inc(ST(0));
   OUTPUT:
     RETVAL
 
-Net__LibSSH__SFTP *
+Net::LibSSH::SFTP
 sftp(self)
-    Net__LibSSH *self
+    Net::LibSSH self
   CODE:
     sftp_session sftp = sftp_new(self->session);
     if (!sftp)
@@ -193,7 +237,7 @@ sftp(self)
         sftp_free(sftp);
         XSRETURN_UNDEF;
     }
-    Newxz(RETVAL, 1, Net__LibSSH__SFTP);
+    Newxz(RETVAL, 1, NLSS_SFTP);
     RETVAL->sftp       = sftp;
     RETVAL->session_sv = SvREFCNT_inc(ST(0));
   OUTPUT:
@@ -202,22 +246,9 @@ sftp(self)
 
 MODULE = Net::LibSSH    PACKAGE = Net::LibSSH::Channel
 
-void
-DESTROY(self)
-    Net__LibSSH__Channel *self
-  CODE:
-    if (self->channel) {
-        ssh_channel_send_eof(self->channel);
-        ssh_channel_close(self->channel);
-        ssh_channel_free(self->channel);
-        self->channel = NULL;
-    }
-    SvREFCNT_dec(self->session_sv);
-    Safefree(self);
-
 int
 exec(self, cmd)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel  self
     const char           *cmd
   CODE:
     RETVAL = (ssh_channel_request_exec(self->channel, cmd) == SSH_OK) ? 1 : 0;
@@ -226,7 +257,7 @@ exec(self, cmd)
 
 SV *
 read(self, ...)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel self
   CODE:
     int is_stderr = 0;
     int len       = -1;
@@ -252,7 +283,7 @@ read(self, ...)
 
 int
 write(self, data)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel  self
     SV                   *data
   CODE:
     STRLEN      len;
@@ -263,13 +294,13 @@ write(self, data)
 
 void
 send_eof(self)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel self
   CODE:
     ssh_channel_send_eof(self->channel);
 
 int
 eof(self)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel self
   CODE:
     RETVAL = ssh_channel_is_eof(self->channel);
   OUTPUT:
@@ -277,7 +308,7 @@ eof(self)
 
 int
 exit_status(self)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel self
   CODE:
     RETVAL = ssh_channel_get_exit_status(self->channel);
   OUTPUT:
@@ -285,8 +316,10 @@ exit_status(self)
 
 void
 close(self)
-    Net__LibSSH__Channel *self
+    Net::LibSSH::Channel self
   CODE:
+    /* Free the C channel now; svt_free will later release
+       session_sv and Safefree the struct when the SV is GC'd. */
     if (self->channel) {
         ssh_channel_send_eof(self->channel);
         ssh_channel_close(self->channel);
@@ -297,20 +330,9 @@ close(self)
 
 MODULE = Net::LibSSH    PACKAGE = Net::LibSSH::SFTP
 
-void
-DESTROY(self)
-    Net__LibSSH__SFTP *self
-  CODE:
-    if (self->sftp) {
-        sftp_free(self->sftp);
-        self->sftp = NULL;
-    }
-    SvREFCNT_dec(self->session_sv);
-    Safefree(self);
-
 SV *
 stat(self, path)
-    Net__LibSSH__SFTP *self
+    Net::LibSSH::SFTP  self
     const char        *path
   CODE:
     sftp_attributes attr = sftp_stat(self->sftp, path);
