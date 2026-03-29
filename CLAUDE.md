@@ -50,6 +50,20 @@ dzil build
 dzil test
 ```
 
+## XS Conventions
+
+- **Typemaps**: `NLSS_Session*`, `NLSS_Channel*`, `NLSS_SFTP*` are declared in
+  `typemap`. XS function parameters use these C types directly — no manual
+  `SvIV(SvRV(...))` unboxing macros. Only `new()`, `channel()`, `sftp()` handle
+  object creation manually (they return `SV*` and bless the reference themselves).
+- **No `PREINIT`**: Declare variables directly in `CODE` blocks. `PREINIT` was
+  only needed for C89; modern compilers (C99+) allow declarations anywhere.
+- **`PROTOTYPES: DISABLE`**: Written once, after the first `MODULE =` line.
+  xsubpp inherits it for all subsequent packages in the same file — don't repeat
+  it per `MODULE` declaration.
+- **`VERSION_FROM`** in `Makefile.PL` (not a hardcoded `VERSION =>`): keeps
+  the compiled `.so` version in sync with `lib/Net/LibSSH.pm`.
+
 ## Key Implementation Notes
 
 - XS file is `LibSSH.xs` — generated C is `LibSSH.c` (not committed)
