@@ -1,0 +1,14 @@
+TYPEMAP
+NLSS_Session *  T_NLSS_SESSION
+NLSS_Channel *  T_NLSS_CHANNEL
+NLSS_SFTP *     T_NLSS_SFTP
+
+INPUT
+T_NLSS_SESSION
+	$var = (NLSS_Session *) SvIV(SvRV($arg));
+
+T_NLSS_CHANNEL
+	$var = (NLSS_Channel *) SvIV(SvRV($arg));
+
+T_NLSS_SFTP
+	$var = (NLSS_SFTP *) SvIV(SvRV($arg));
