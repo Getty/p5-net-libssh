@@ -36,14 +36,17 @@ Must be called exactly once per channel.
 
 =head2 read([$length [, $is_stderr]])
 
-  my $stdout = $ch->read;            # slurp all stdout until EOF
-  my $chunk  = $ch->read(4096);      # read up to 4096 bytes from stdout
-  my $stderr = $ch->read(undef, 1);  # slurp all stderr
+  my $stdout = $ch->read;         # slurp all stdout until EOF
+  my $chunk  = $ch->read(4096);   # read up to 4096 bytes from stdout
+  my $stderr = $ch->read(-1, 1);  # slurp all stderr
 
-Read output from the channel. Without arguments (or with C<undef> length),
+Read output from the channel. Without arguments (or with C<-1> length),
 reads until the remote side closes the stream. With a positive C<$length>,
 reads at most that many bytes. Pass a true C<$is_stderr> as the second
 argument to read from stderr instead of stdout.
+
+B<Note:> Do not pass C<undef> as the length — it evaluates to 0 and reads
+nothing. Use C<-1> or omit the argument entirely to slurp all output.
 
 Returns a string (possibly empty). Never throws.
 

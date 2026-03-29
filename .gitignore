@@ -10,3 +10,4 @@ LibSSH.bs
 .build/
 Net-LibSSH-*/
 *.tar.gz
+pm_to_blib
