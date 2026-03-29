@@ -1,6 +1,6 @@
 Revision history for Net-LibSSH
 
-{{$NEXT}}
+0.002     2026-03-29 14:49:04Z
   - Refactor XS internals: replace sv_setref_pv/DESTROY with
     sv_magicext + MGVTBL (svt_free) for automatic GC-driven cleanup
   - Typemap INPUT now uses mg_findext with type-specific vtable pointer
