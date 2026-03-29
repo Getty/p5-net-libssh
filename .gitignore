@@ -7,3 +7,6 @@ blib/
 LibSSH.c
 LibSSH.xsc
 LibSSH.bs
+.build/
+Net-LibSSH-*/
+*.tar.gz

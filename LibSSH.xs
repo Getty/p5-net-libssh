@@ -121,6 +121,9 @@ option(self, key, value)
     } else if (strcmp(key, "log_verbosity") == 0) {
         int v = SvIV(value);
         rc = ssh_options_set(s->session, SSH_OPTIONS_LOG_VERBOSITY, &v);
+    } else if (strcmp(key, "strict_hostkeycheck") == 0) {
+        int v = SvTRUE(value) ? 1 : 0;
+        rc = ssh_options_set(s->session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &v);
     } else {
         Perl_croak(aTHX_ "Net::LibSSH::option: unknown option '%s'", key);
     }

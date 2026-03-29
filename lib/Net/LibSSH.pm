@@ -66,7 +66,8 @@ Creates a new session object.
   $ssh->option(user => 'root');
 
 Set a session option before connecting. Supported keys: C<host>, C<port>,
-C<user>, C<knownhosts>, C<timeout>, C<compression>, C<log_verbosity>.
+C<user>, C<knownhosts>, C<timeout>, C<compression>, C<log_verbosity>,
+C<strict_hostkeycheck> (set to 0 to disable host key verification).
 
 =head2 connect
 
