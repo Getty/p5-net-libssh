@@ -1,14 +1,36 @@
 TYPEMAP
-NLSS_Session *  T_NLSS_SESSION
-NLSS_Channel *  T_NLSS_CHANNEL
-NLSS_SFTP *     T_NLSS_SFTP
+Net__LibSSH *           T_NET_LIBSSH
+Net__LibSSH__Channel *  T_NET_LIBSSH_CHANNEL
+Net__LibSSH__SFTP *     T_NET_LIBSSH_SFTP
 
 INPUT
-T_NLSS_SESSION
-	$var = (NLSS_Session *) SvIV(SvRV($arg));
+T_NET_LIBSSH
+	if (SvROK($arg) && sv_derived_from($arg, \"Net::LibSSH\")) {
+	    $var = INT2PTR($type, SvIV(SvRV($arg)));
+	} else
+	    Perl_croak(aTHX_ \"%s: %s is not of type Net::LibSSH\",
+	        \"${pname}\", \"$var\");
 
-T_NLSS_CHANNEL
-	$var = (NLSS_Channel *) SvIV(SvRV($arg));
+T_NET_LIBSSH_CHANNEL
+	if (SvROK($arg) && sv_derived_from($arg, \"Net::LibSSH::Channel\")) {
+	    $var = INT2PTR($type, SvIV(SvRV($arg)));
+	} else
+	    Perl_croak(aTHX_ \"%s: %s is not of type Net::LibSSH::Channel\",
+	        \"${pname}\", \"$var\");
 
-T_NLSS_SFTP
-	$var = (NLSS_SFTP *) SvIV(SvRV($arg));
+T_NET_LIBSSH_SFTP
+	if (SvROK($arg) && sv_derived_from($arg, \"Net::LibSSH::SFTP\")) {
+	    $var = INT2PTR($type, SvIV(SvRV($arg)));
+	} else
+	    Perl_croak(aTHX_ \"%s: %s is not of type Net::LibSSH::SFTP\",
+	        \"${pname}\", \"$var\");
+
+OUTPUT
+T_NET_LIBSSH
+	sv_setref_pv($arg, \"Net::LibSSH\", (void*)$var);
+
+T_NET_LIBSSH_CHANNEL
+	sv_setref_pv($arg, \"Net::LibSSH::Channel\", (void*)$var);
+
+T_NET_LIBSSH_SFTP
+	sv_setref_pv($arg, \"Net::LibSSH::SFTP\", (void*)$var);

@@ -8,22 +8,14 @@
 #include <libssh/sftp.h>
 
 /* ====================================================
-   Internal structs
+   Internal structs — typedef'd to Net__Foo__Bar names so
+   xsubpp's T_PTROBJ can derive the Perl class automatically
+   (__ becomes :: in the blessed package name).
    ==================================================== */
 
-typedef struct {
-    ssh_session session;
-} NLSS_Session;
-
-typedef struct {
-    ssh_channel channel;
-    SV         *session_sv;   /* holds a ref to the session SV — prevents GC */
-} NLSS_Channel;
-
-typedef struct {
-    sftp_session sftp;
-    SV          *session_sv;
-} NLSS_SFTP;
+typedef struct { ssh_session session;                   } Net__LibSSH;
+typedef struct { ssh_channel channel; SV *session_sv;  } Net__LibSSH__Channel;
+typedef struct { sftp_session sftp;   SV *session_sv;  } Net__LibSSH__SFTP;
 
 /* ====================================================
    Helper functions
@@ -55,27 +47,22 @@ MODULE = Net::LibSSH    PACKAGE = Net::LibSSH
 
 PROTOTYPES: DISABLE
 
-SV *
+Net__LibSSH *
 new(class)
     SV *class
   CODE:
-    NLSS_Session *s;
-    SV *sv;
-    Newxz(s, 1, NLSS_Session);
-    s->session = ssh_new();
-    if (!s->session) {
-        Safefree(s);
+    Newxz(RETVAL, 1, Net__LibSSH);
+    RETVAL->session = ssh_new();
+    if (!RETVAL->session) {
+        Safefree(RETVAL);
         Perl_croak(aTHX_ "Net::LibSSH::new: ssh_new() returned NULL");
     }
-    sv = newSV(0);
-    sv_setiv(sv, (IV) s);
-    RETVAL = sv_bless(newRV_noinc(sv), gv_stashpvs("Net::LibSSH", GV_ADD));
   OUTPUT:
     RETVAL
 
 void
 DESTROY(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     if (self->session) {
         ssh_disconnect(self->session);
@@ -86,9 +73,9 @@ DESTROY(self)
 
 void
 option(self, key, value)
-    NLSS_Session *self
-    const char   *key
-    SV           *value
+    Net__LibSSH *self
+    const char  *key
+    SV          *value
   CODE:
     int rc = SSH_OK;
     if (strcmp(key, "host") == 0) {
@@ -119,7 +106,7 @@ option(self, key, value)
 
 int
 connect(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     RETVAL = (ssh_connect(self->session) == SSH_OK) ? 1 : 0;
   OUTPUT:
@@ -127,13 +114,13 @@ connect(self)
 
 void
 disconnect(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     ssh_disconnect(self->session);
 
 SV *
 error(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     const char *msg = ssh_get_error(self->session);
     RETVAL = (msg && *msg) ? newSVpv(msg, 0) : &PL_sv_undef;
@@ -142,8 +129,8 @@ error(self)
 
 int
 auth_password(self, password)
-    NLSS_Session *self
-    const char   *password
+    Net__LibSSH *self
+    const char  *password
   CODE:
     RETVAL = (ssh_userauth_password(self->session, NULL, password)
               == SSH_AUTH_SUCCESS) ? 1 : 0;
@@ -152,7 +139,7 @@ auth_password(self, password)
 
 int
 auth_agent(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     int rc = ssh_userauth_agent(self->session, NULL);
     if (rc != SSH_AUTH_SUCCESS)
@@ -163,8 +150,8 @@ auth_agent(self)
 
 int
 auth_publickey(self, privkey_path)
-    NLSS_Session *self
-    const char   *privkey_path
+    Net__LibSSH *self
+    const char  *privkey_path
   CODE:
     ssh_key key = NULL;
     int rc = ssh_pki_import_privkey_file(privkey_path, NULL, NULL, NULL, &key);
@@ -178,9 +165,9 @@ auth_publickey(self, privkey_path)
   OUTPUT:
     RETVAL
 
-SV *
+Net__LibSSH__Channel *
 channel(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     ssh_channel ch = ssh_channel_new(self->session);
     if (!ch)
@@ -189,19 +176,15 @@ channel(self)
         ssh_channel_free(ch);
         XSRETURN_UNDEF;
     }
-    NLSS_Channel *c;
-    Newxz(c, 1, NLSS_Channel);
-    c->channel    = ch;
-    c->session_sv = SvREFCNT_inc(ST(0));
-    SV *sv = newSV(0);
-    sv_setiv(sv, (IV) c);
-    RETVAL = sv_bless(newRV_noinc(sv), gv_stashpvs("Net::LibSSH::Channel", GV_ADD));
+    Newxz(RETVAL, 1, Net__LibSSH__Channel);
+    RETVAL->channel    = ch;
+    RETVAL->session_sv = SvREFCNT_inc(ST(0));
   OUTPUT:
     RETVAL
 
-SV *
+Net__LibSSH__SFTP *
 sftp(self)
-    NLSS_Session *self
+    Net__LibSSH *self
   CODE:
     sftp_session sftp = sftp_new(self->session);
     if (!sftp)
@@ -210,13 +193,9 @@ sftp(self)
         sftp_free(sftp);
         XSRETURN_UNDEF;
     }
-    NLSS_SFTP *s;
-    Newxz(s, 1, NLSS_SFTP);
-    s->sftp       = sftp;
-    s->session_sv = SvREFCNT_inc(ST(0));
-    SV *sv = newSV(0);
-    sv_setiv(sv, (IV) s);
-    RETVAL = sv_bless(newRV_noinc(sv), gv_stashpvs("Net::LibSSH::SFTP", GV_ADD));
+    Newxz(RETVAL, 1, Net__LibSSH__SFTP);
+    RETVAL->sftp       = sftp;
+    RETVAL->session_sv = SvREFCNT_inc(ST(0));
   OUTPUT:
     RETVAL
 
@@ -225,7 +204,7 @@ MODULE = Net::LibSSH    PACKAGE = Net::LibSSH::Channel
 
 void
 DESTROY(self)
-    NLSS_Channel *self
+    Net__LibSSH__Channel *self
   CODE:
     if (self->channel) {
         ssh_channel_send_eof(self->channel);
@@ -238,8 +217,8 @@ DESTROY(self)
 
 int
 exec(self, cmd)
-    NLSS_Channel *self
-    const char   *cmd
+    Net__LibSSH__Channel *self
+    const char           *cmd
   CODE:
     RETVAL = (ssh_channel_request_exec(self->channel, cmd) == SSH_OK) ? 1 : 0;
   OUTPUT:
@@ -247,7 +226,7 @@ exec(self, cmd)
 
 SV *
 read(self, ...)
-    NLSS_Channel *self
+    Net__LibSSH__Channel *self
   CODE:
     int is_stderr = 0;
     int len       = -1;
@@ -273,8 +252,8 @@ read(self, ...)
 
 int
 write(self, data)
-    NLSS_Channel *self
-    SV           *data
+    Net__LibSSH__Channel *self
+    SV                   *data
   CODE:
     STRLEN      len;
     const char *ptr = SvPV(data, len);
@@ -284,13 +263,13 @@ write(self, data)
 
 void
 send_eof(self)
-    NLSS_Channel *self
+    Net__LibSSH__Channel *self
   CODE:
     ssh_channel_send_eof(self->channel);
 
 int
 eof(self)
-    NLSS_Channel *self
+    Net__LibSSH__Channel *self
   CODE:
     RETVAL = ssh_channel_is_eof(self->channel);
   OUTPUT:
@@ -298,7 +277,7 @@ eof(self)
 
 int
 exit_status(self)
-    NLSS_Channel *self
+    Net__LibSSH__Channel *self
   CODE:
     RETVAL = ssh_channel_get_exit_status(self->channel);
   OUTPUT:
@@ -306,7 +285,7 @@ exit_status(self)
 
 void
 close(self)
-    NLSS_Channel *self
+    Net__LibSSH__Channel *self
   CODE:
     if (self->channel) {
         ssh_channel_send_eof(self->channel);
@@ -320,7 +299,7 @@ MODULE = Net::LibSSH    PACKAGE = Net::LibSSH::SFTP
 
 void
 DESTROY(self)
-    NLSS_SFTP *self
+    Net__LibSSH__SFTP *self
   CODE:
     if (self->sftp) {
         sftp_free(self->sftp);
@@ -331,8 +310,8 @@ DESTROY(self)
 
 SV *
 stat(self, path)
-    NLSS_SFTP  *self
-    const char *path
+    Net__LibSSH__SFTP *self
+    const char        *path
   CODE:
     sftp_attributes attr = sftp_stat(self->sftp, path);
     if (!attr)
