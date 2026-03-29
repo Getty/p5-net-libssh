@@ -52,10 +52,45 @@ dzil test
 
 ## XS Conventions
 
-- **Typemaps**: `NLSS_Session*`, `NLSS_Channel*`, `NLSS_SFTP*` are declared in
-  `typemap`. XS function parameters use these C types directly — no manual
-  `SvIV(SvRV(...))` unboxing macros. Only `new()`, `channel()`, `sftp()` handle
-  object creation manually (they return `SV*` and bless the reference themselves).
+### Typemap approach
+
+The three object types use T_PTROBJ-style typemap entries (see `typemap`):
+
+```
+Net__LibSSH *           T_NET_LIBSSH
+Net__LibSSH__Channel *  T_NET_LIBSSH_CHANNEL
+Net__LibSSH__SFTP *     T_NET_LIBSSH_SFTP
+```
+
+The structs are typedef'd to `Net__LibSSH` etc. (double-underscore = `::` by
+convention, keeps XS signatures readable). Each typemap entry has:
+
+- **INPUT**: `sv_derived_from` type check + `INT2PTR` unboxing — no manual
+  `SvIV(SvRV(...))` macros, and wrong types croak at the XS boundary.
+- **OUTPUT**: `sv_setref_pv` blessing — `new()`, `channel()`, `sftp()` declare
+  `RETVAL` as the struct pointer type and let xsubpp handle the blessing via the
+  OUTPUT section. No manual `gv_stashpvs` / `sv_bless` needed.
+
+**Do not** use the bare `T_PTROBJ` builtin — it appends `Ptr` to the type name
+(`Net__LibSSHPtr`) instead of using the real Perl class name.
+
+### Typemap template escaping
+
+xsubpp evaluates typemap INPUT/OUTPUT templates as **Perl double-quoted strings**.
+Any literal `"` that should appear in the generated C code must be written as `\"`
+in the typemap file. Unescaped `"` ends the Perl string early and produces parse
+errors. Example:
+
+```
+# Wrong:
+sv_setref_pv($arg, "Net::LibSSH", (void*)$var);
+
+# Correct:
+sv_setref_pv($arg, \"Net::LibSSH\", (void*)$var);
+```
+
+### Other rules
+
 - **No `PREINIT`**: Declare variables directly in `CODE` blocks. `PREINIT` was
   only needed for C89; modern compilers (C99+) allow declarations anywhere.
 - **`PROTOTYPES: DISABLE`**: Written once, after the first `MODULE =` line.
