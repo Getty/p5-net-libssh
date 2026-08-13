@@ -1,0 +1,23 @@
+---
+claimed_at: 2026-08-13T17:51:47Z
+claimed_by: main
+class: standard
+completed: 2026-08-13T17:51:47Z
+created: 2026-08-13T15:39:15Z
+id: 6
+priority: medium
+started: 2026-08-13T17:19:13Z
+status: done
+tags:
+- docs
+title: 'README.md: stale build section and copyright year'
+updated: 2026-08-13T17:51:47Z
+---
+
+Erledigt. Zwei Aenderungen an README.md, sonst nichts:
+
+1. Sektion "Or from this repository" komplett entfernt. Sie wies auf "perl Makefile.PL && make && make test" hin -- im Checkout liegt kein Makefile.PL, der wird beim dzil-Build von MakeMaker::Awesome (xs_alien) generiert. Entscheidung des Maintainers: die Sektion faellt ganz weg statt sie auf den dzil-Workflow umzuschreiben. README.md richtet sich an Nutzer, "cpanm Net::LibSSH" genuegt; der dzil-Workflow ist Author-Sache und gehoert nicht in eine Installations-Sektion.
+
+2. Copyright 2025 -> 2026, passend zu copyright_year in dist.ini und zum generierten LICENSE.
+
+Hinweis fuer spaeter: README.md ist nicht Teil der Distribution. [@Author::GETTY] schliesst sie per Default aus (Bundle-Option include_readme), im Tarball liegt ein aus POD generiertes README. Aenderungen hier sind reine GitHub-Oberflaeche und nie release-relevant.
