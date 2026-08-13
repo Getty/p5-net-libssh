@@ -47,13 +47,6 @@ Requires `libssh` development headers (`libssh-dev` on Debian/Ubuntu, `libssh-de
 cpanm Net::LibSSH
 ```
 
-Or from this repository:
-
-```
-cpanm --installdeps .
-perl Makefile.PL && make && make test
-```
-
 ## See Also
 
 - [Net::LibSSH::Channel](https://metacpan.org/pod/Net::LibSSH::Channel)
@@ -67,4 +60,4 @@ Torsten Raudssus `<getty@cpan.org>`
 
 ## License
 
-This software is copyright (c) 2025 by Torsten Raudssus. This is free software; you can redistribute it and/or modify it under the same terms as the Perl 5 programming language system itself.
+This software is copyright (c) 2026 by Torsten Raudssus. This is free software; you can redistribute it and/or modify it under the same terms as the Perl 5 programming language system itself.
