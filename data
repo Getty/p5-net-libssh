@@ -1,0 +1,20 @@
+---
+claimed_at: 2026-08-13T17:39:27Z
+claimed_by: net-libssh-worker
+class: standard
+completed: 2026-08-13T17:38:32Z
+created: 2026-08-13T15:38:28Z
+id: 5
+priority: high
+started: 2026-08-13T17:19:08Z
+status: done
+tags:
+- build
+- release
+title: Agent infrastructure ships in the CPAN tarball
+updated: 2026-08-13T17:39:27Z
+---
+
+Verified against a real dzil build of 0.003: the dist contains .claude/agents/*.md (4), .claude/rules/net-libssh-rules.md, .claude/settings.json, .claude/skills/*/SKILL.md (5) plus CLAUDE.md and .gitignore. Cause: [@Author::GETTY] removes PruneCruft and gathers via Git::GatherDir, so everything tracked in git is shipped; only README.md is excluded (include_readme = 0 by default). 0.002 already shipped CLAUDE.md and .gitignore; the agent-team commit cd3eb51 adds 11 more files, four of which are shared house skills (perl-core, perl-release-author-getty, perl-release-dist-ini, karr) that are not project content and would be published under the maintainer name on CPAN. Fix in dist.ini via the bundle options gather_exclude_match = ^\.claude/ and gather_exclude_filename = CLAUDE.md (and decide on .gitignore). Must land before the next release.
+dist.ini erweitert um gather_exclude_match = ^\.claude/ und gather_exclude_filename = CLAUDE.md unter [@Author::GETTY]. Bundle-Quelle geprueft: beide sind in mvp_multivalue_args (@gather_array_options), werden an Git::GatherDir durchgereicht; dort matcht exclude_match als Regex gegen den git-relativen Pfad (GatherDir.pm:171) und exclude_filename als exakter String-Vergleich - Anker ^\.claude/ ist damit korrekt. effective_gather_exclude_filename haengt README.md an, unsere Angabe kommt additiv dazu. Verifiziert mit dzil build --no-tgz: 22 Dateien, kein .claude/-Pfad, kein CLAUDE.md, MANIFEST ebenfalls sauber; alle Pflichtdateien (3x lib/*.pm, LibSSH.xs, typemap, ppport.h, cpanfile, Makefile.PL via Alien::libssh, META.json, META.yml, MANIFEST, LICENSE, README, Changes, alle t/) vorhanden. dzil test gruen: Files=5, Tests=29, Result PASS - t/02-integration.t ist WIRKLICH GELAUFEN (10 Tests, echte Verbindung, auth_publickey, exec, read, exit_status, sftp+stat), nicht ge-skip_all-t. Build-Verzeichnis entfernt. .gitignore bleibt wie beauftragt im Tarball. Nicht committet. Hinweis fuer Review: README.md ist im Working Tree ebenfalls modifiziert - nicht von mir, das Bundle generiert kein README, die Aenderung lag vorher schon da.
+ENTSCHIEDEN VOM MAINTAINER: kein Problem, wird nicht gefixt. Die Agenten-Infrastruktur (.claude/ und CLAUDE.md) soll Teil der Distribution sein. Die dist.ini-Aenderung (gather_exclude_match/gather_exclude_filename) wurde zurueckgenommen, dist.ini ist wieder unveraendert gegenueber HEAD. Per dzil build verifiziert: die 12 Dateien sind wieder im Dist, 34 Dateien gesamt. Zur Einordnung fuer spaeter: die Einstufung als Release-Blocker kam vom Agenten, nicht vom Maintainer -- der Tarball-Inhalt war nie beanstandet worden.
