@@ -258,6 +258,14 @@ board is detected on read and repaired on the fly, so nothing is broken in the
 meantime; this migrates the stored refs once so the workaround stops being
 needed. A board created by a later version needs nothing here and says so.
 
+The same command also raises a `started` stamp that precedes its own card's
+`created` up to that `created` — karr wrote `started` as a bare date until
+ticket #68, which reads as midnight and so lands before a card created later
+the same day. A clamped card then asserts zero queue time and no longer
+records that its stamp was ever day-granular, so the dry run tells you how
+many cards that is before you apply it. It reports, but does not touch,
+`completed` stamps with the same day-granular problem.
+
 ### Backup and restore
 
 ```bash
@@ -297,6 +305,32 @@ karr log --agent swift-fox                   # filter by agent
 karr log --task 5                            # filter by task
 karr log --last 50 --json                    # more entries, JSON
 ```
+
+### Flow metrics
+
+```bash
+karr metrics                                 # throughput, lead/cycle time, efficiency, aging
+karr metrics --since 2026-01-01              # only count tasks completed after this date
+karr metrics --compact                       # one line plus one per aging item
+karr metrics --json                          # JSON output
+```
+
+Every figure comes from the `created`/`started`/`completed` stamps on the
+cards, not from the activity log. Cards whose stamps cannot carry a
+measurement — an unreadable date, a `started` that precedes the card's own
+`created`, or a `completed` that precedes that `started` — are left out of the
+averages that need them and counted in `unusable_timestamps` (cards, not
+stamps), so a low sample count is visible rather than silent.
+
+Lead time is the deliberate exception: a `completed` that precedes its own
+`created` is still averaged in, negative and all, because every value it could
+be clamped to would be an invention. Such samples are counted separately in
+`negative_lead_samples` and named in the closing note, so the average is
+qualified instead of cleaned — they are *in* the figure, not missing from it,
+which is why they are not in `unusable_timestamps`. They come from boards
+written before karr 0.403, which stamped `started`/`completed` as a bare
+`YYYY-MM-DD` that reads as midnight; on such a board an average printed to the
+hour is finer than the data underneath it.
 
 ### Agent name
 
