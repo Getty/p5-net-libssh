@@ -70,5 +70,5 @@ main agent delegates rather than loading them. Skill sources live under
 `.claude/skills/` — `net-libssh-core` holds the XS binding architecture
 (`sv_magicext`/MGVTBL lifecycle, the per-type typemap and its escaping rules,
 the session refcount chain, the API contracts); `getty-perl-core`,
-`getty-perl-release-author-getty`, `perl-release-dist-ini` and
-`kanban-issues-karr-cli` are hardlinked shared skills.
+`getty-perl-release-author-getty` and `kanban-issues-karr-cli` are hardlinked
+shared skills.

@@ -149,6 +149,13 @@ and with three types the macro machinery costs more than it saves.
 - **No `PREINIT`.** Declare variables directly in `CODE` blocks.
 - **`PROTOTYPES: DISABLE`** is written once after the first `MODULE =` line;
   xsubpp inherits it for the later packages in the same file.
+- **Every channel method except `close` opens with
+  `nlss_channel_check_open()`.** A closed channel has `self->channel == NULL`,
+  and libssh absorbs a NULL channel rather than crashing on it: before the guard
+  `exit_status()` returned -1 and `read()` returned `""`. The failure mode is a
+  plausible wrong answer, not a segfault, so a missing guard on a new method is
+  invisible in testing. `close()` is the exception — it must stay idempotent for
+  `svt_free`.
 - **`XSRETURN_UNDEF` bypasses the OUTPUT section.** That is how `channel()`,
   `sftp()` and `stat()` return undef instead of an object. It also means
   `RETVAL` must not have been allocated yet when you take that branch —
@@ -165,18 +172,42 @@ These are behaviour, not style. Changing one is a breaking change for
 - **`stat()` returns `undef`** for a missing or inaccessible path — never a
   half-populated hashref.
 - **`connect()` / `auth_*()` return 1 or 0 and do not die.** The message goes
-  through `error()`. A refused port must return 0, not croak.
-- **`option()` croaks on an unknown key.** The key set is closed and enumerated
-  in the XS `strcmp` chain; extending it means extending the POD too.
+  through `error()`, which returns `undef` — not the empty string — when libssh
+  has nothing to say. A refused port must return 0, not croak.
+- **`auth_agent()` silently falls back to `ssh_userauth_publickey_auto`** when
+  the agent is missing or refuses. A return of 1 is not evidence that an agent
+  was used.
+- **`option()` croaks on an unknown key.** The set is a closed `strcmp` chain;
+  extending it means extending the POD too.
+
+  | key | libssh option | conversion |
+  |---|---|---|
+  | `host` | `SSH_OPTIONS_HOST` | `SvPV_nolen` |
+  | `user` | `SSH_OPTIONS_USER` | `SvPV_nolen` |
+  | `port` | `SSH_OPTIONS_PORT` | `SvUV` |
+  | `knownhosts` | `SSH_OPTIONS_KNOWNHOSTS` | `SvPV_nolen` |
+  | `timeout` | `SSH_OPTIONS_TIMEOUT` | `SvIV` |
+  | `compression` | `SSH_OPTIONS_COMPRESSION` | `SvPV_nolen` |
+  | `log_verbosity` | `SSH_OPTIONS_LOG_VERBOSITY` | `SvIV` |
+  | `strict_hostkeycheck` | `SSH_OPTIONS_STRICTHOSTKEYCHECK` | `SvTRUE` |
+
+  The numeric conversions are silent. `option(port => 'nonsense')` sets port 0
+  and returns normally, because `SvUV` of a non-numeric string is 0 — the croak
+  covers unknown keys, not unusable values.
 - **`read()` with no argument (or `-1`) slurps until EOF.** `read(undef)` is a
-  trap: `SvIV(undef)` is 0, so it reads nothing and returns the empty string.
+  trap: `SvIV(undef)` is 0, so it takes the fixed-length branch with length 0,
+  reads nothing and returns the empty string. Both branches end on
+  `ssh_channel_read() <= 0` and yield a string either way, so **`read()` cannot
+  distinguish EOF from a read error** — neither returns undef, neither croaks.
   Documented in the POD; keep it documented.
 - **`exit_status()` returns -1 until the remote process has exited** — read the
   output first.
-- **`close()` sets `self->channel = NULL`.** Every other channel method
-  dereferences that pointer straight into libssh. Treat any channel call after
-  `close` as use-after-free; in particular `exit_status()` must be read
-  *before* `close()`. `close()` itself is idempotent.
+- **`close()` sets `self->channel = NULL`; every other channel method croaks
+  from then on.** The message is `"<fully qualified method>: channel is
+  closed"`. `exit_status()` must still be read *before* `close()` — it now fails
+  loudly instead of returning -1, which a caller cannot tell apart from "the
+  process has not exited yet". `close()` itself is idempotent and deliberately
+  unguarded, because `svt_free` walks the same path when the SV is collected.
 - **A channel runs one command per lifetime.** `exec` is called once; a second
   command needs a new `$ssh->channel`.
 - **Not fork-safe, not thread-safe.** One session per process, as the POD says.

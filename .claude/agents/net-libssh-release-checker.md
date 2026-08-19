@@ -1,12 +1,11 @@
 ---
 name: net-libssh-release-checker
-description: "Audit Net::LibSSH before release — Changes/{{$NEXT}} current, cpanfile complete with Alien::libssh declared in both runtime and configure phases, $VERSION identical across all three modules under lib/, dist.ini [@Author::GETTY] with xs_alien/xs_object intact, dzil build clean and linking against Alien::libssh rather than the untracked pkg-config Makefile.PL, and the integration suite actually executed against a real sshd rather than skipped. Knows that Rex::LibSSH pins this distribution downstream. Reports; does not fix and never releases."
+description: "Audit Net::LibSSH before release — Changes/{{$NEXT}} current, cpanfile complete with Alien::libssh declared in both runtime and configure phases, $VERSION identical across all three modules under lib/, dist.ini [@Author::GETTY] with xs_alien/xs_object intact, dzil build clean and linking against Alien::libssh, and the integration suite actually executed against a real sshd rather than skipped. Knows that Rex::LibSSH pins this distribution downstream. Reports; does not fix and never releases."
 model: sonnet
 allowed-tools: Read, Bash, Glob, Grep
 briefing:
   skills:
     - getty-perl-release-author-getty
-    - perl-release-dist-ini
     - getty-perl-core
     - net-libssh-core
     - kanban-issues-karr-cli
@@ -49,9 +48,10 @@ maintainer releases. **Never** run `dzil release` or upload to CPAN.
 
 5. **`dzil build`** — runs clean: no missing files, no warnings, and the build
    actually compiles the XS. Confirm the *generated* `Makefile.PL` in the build
-   directory uses `Alien::libssh->cflags` / `->libs`; the hand-written
-   `pkg-config` one in the working directory is untracked and must never appear
-   in the tarball. `CLAUDE.md` and the tracked parts of `.claude/` **are**
+   directory uses `Alien::libssh->cflags` / `->libs`. A `Makefile.PL` in the
+   *working* directory is a finding in itself: a hand-written `pkg-config` one
+   used to live there and linked against a different libssh than the release
+   does. It is gone; it must not come back. `CLAUDE.md` and the tracked parts of `.claude/` **are**
    shipped deliberately (there is no `gather_exclude_match` in `dist.ini`), so
    their presence is not a finding. What *is* a finding: anything under
    `.claude/` that must never be published — `settings.local.json`, credentials,
@@ -65,9 +65,12 @@ maintainer releases. **Never** run `dzil release` or upload to CPAN.
    generated from `LibSSH.xs` and must not be committed.
 
 6. **Integration proof — the check specific to this distribution.** A release
-   claims a working SSH binding. Check whether `t/02-integration.t` actually
-   *ran*: it `plan skip_all`s when `sshd` or `ssh-keygen` is missing and the
-   suite then reports `All tests successful` having opened no connection at all.
+   claims a working SSH binding. Check whether the files that open a real
+   connection actually *ran* — `t/02-integration.t`, `t/03-channel-after-close.t`
+   and `t/04-no-sftp.t` all `plan skip_all` when `sshd` or `ssh-keygen` is
+   missing, and the suite then reports `All tests successful` having opened no
+   connection at all. `t/04` is the one that proves the product claim: it starts
+   the harness with `sftp => 0` and asserts exec-channel work succeeds anyway.
    Report the state plainly — "integration verified against local sshd" or
    "integration NOT verified, no sshd" — and treat the latter as a release
    blocker, not a note.

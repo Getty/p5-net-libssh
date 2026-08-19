@@ -40,12 +40,22 @@ There is no single command that proves everything here — say which one you ran
 ```bash
 dzil test              # the release path: Alien::libssh flags, full suite
 prove -lr t/           # after a Makefile build; -r matters if t/ ever grows subdirs
-prove -lv t/02-integration.t   # the only file that opens a real connection
+prove -lv t/02-integration.t   # verbose: proves the file ran rather than skipped
 ```
 
-`t/02-integration.t` `plan skip_all`s when `sshd` or `ssh-keygen` is missing and
-`prove` then prints `All tests successful` having connected to nothing. A green
-suite is only evidence if that file actually ran.
+There is no `Makefile.PL` in the working directory, so `prove` needs a `blib/`
+first. To see per-file results, build somewhere writable and test there:
+
+```bash
+dzil build --in /tmp/nlss-check --no-tgz
+cd /tmp/nlss-check && perl Makefile.PL && make && prove -bv t/03-channel-after-close.t
+```
+
+Every file that opens a real connection — `t/02-integration.t`,
+`t/03-channel-after-close.t`, `t/04-no-sftp.t` — `plan skip_all`s when `sshd` or
+`ssh-keygen` is missing, and `prove` then prints `All tests successful` having
+connected to nothing. A green suite is only evidence if those files actually
+ran; say which ones did.
 
 After any change to `LibSSH.xs` or `typemap`, recompile before testing —
 a stale `blib/` will happily run the previous `.so` and prove nothing.
@@ -58,5 +68,7 @@ a stale `blib/` will happily run the previous `.so` and prove nothing.
   teardown.
 - Do not switch the typemap to `T_PTROBJ` or the generic `T_MAGICEXT` — both are
   ruled out for reasons recorded in your briefing.
-- Do not edit the working-directory `Makefile.PL`. It is untracked and `dzil`
-  regenerates a different one; build configuration lives in `dist.ini`.
+- Do not put a `Makefile.PL` in the working directory. `dzil` generates one that
+  resolves flags through `Alien::libssh`; a hand-written `pkg-config` variant
+  used to sit here and linked against a different libssh than the release does.
+  Build configuration lives in `dist.ini`.

@@ -109,14 +109,17 @@ handle a specific issue. Every write publishes under the maintainer's name.
    `typemap`, recompile before testing — otherwise the suite tests the last
    build and passes for the wrong reason.
 
-3. **`t/02-integration.t` `skip_all`s into a green run.** Without `sshd` or
-   `ssh-keygen` it plans zero tests and `prove` prints `All tests successful`
-   having opened no connection. It is the only file that exercises a real
-   session. Always state whether it ran.
+3. **The integration files `skip_all` into a green run.** Without `sshd` or
+   `ssh-keygen`, `t/02-integration.t`, `t/03-channel-after-close.t` and
+   `t/04-no-sftp.t` each plan zero tests and `prove` prints `All tests
+   successful` having opened no connection. They are the only files that
+   exercise a real session. Always state which of them ran.
 
-4. **`close()` NULLs the channel pointer.** Every other channel method
-   dereferences it straight into libssh. `exit_status()` must be read *before*
-   `close()`; treat any post-`close` call as use-after-free.
+4. **`close()` NULLs the channel pointer and every other channel method croaks
+   afterwards.** `exit_status()` must still be read *before* `close()`. The
+   guard exists because libssh absorbed the NULL rather than crashing on it:
+   `exit_status()` returned -1 and `read()` returned `""`, so the old failure
+   mode was a plausible wrong answer, not a segfault.
 
 5. **The session refcount chain is load-bearing.** `Channel` and `SFTP` hold
    `SvREFCNT_inc` on the session SV; that is the only thing keeping the
@@ -133,7 +136,7 @@ handle a specific issue. Every write publishes under the maintainer's name.
 ## Perl specifics — reference, don't restate
 
 Module loading, dependency pinning and house style live in skill `getty-perl-core`.
-Release mechanics live in `getty-perl-release-author-getty` and
-`perl-release-dist-ini`. The XS binding architecture, typemap rules and API
-contracts live in skill `net-libssh-core`. All four are force-loaded for
-`net-libssh-*` agents. Do not duplicate that content here.
+Release mechanics live in `getty-perl-release-author-getty`. The XS binding
+architecture, typemap rules and API contracts live in skill `net-libssh-core`.
+All three are force-loaded for `net-libssh-*` agents. Do not duplicate that
+content here.
