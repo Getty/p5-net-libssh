@@ -18,7 +18,14 @@ my $SFTP_SERVER = do {
 };
 
 sub start {
-    my ($class) = @_;
+    my ($class, %opts) = @_;
+
+    # By default the sftp subsystem is advertised whenever an sftp-server
+    # binary was found on this machine. Pass `sftp => 0` to start a harness
+    # variant with no Subsystem line at all, even if a binary is available —
+    # this is what proves the exec-channel path works on a host that truly
+    # has no SFTP support.
+    my $want_sftp = exists $opts{sftp} ? $opts{sftp} : 1;
 
     my $sshd = do {
         my ($found) = grep { -x $_ } qw(/usr/sbin/sshd /usr/bin/sshd);
@@ -54,7 +61,7 @@ StrictModes no
 UsePAM no
 AllowUsers $user
 CONFIG
-    print $fh "Subsystem sftp $SFTP_SERVER\n" if $SFTP_SERVER;
+    print $fh "Subsystem sftp $SFTP_SERVER\n" if $SFTP_SERVER && $want_sftp;
     close $fh;
 
     my $pid = fork();
@@ -89,7 +96,7 @@ CONFIG
         port       => $port,
         host       => '127.0.0.1',
         client_key => "$dir/client_key",
-        has_sftp   => $SFTP_SERVER ? 1 : 0,
+        has_sftp   => ($SFTP_SERVER && $want_sftp) ? 1 : 0,
     }, $class;
 }
 
