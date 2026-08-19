@@ -20,8 +20,11 @@ typedef struct { sftp_session sftp;    SV *session_sv; } NLSS_SFTP;
 
 /* Pointer typedefs with the xsubpp __ → :: naming convention.
    Using pointer typedefs (not struct typedefs) means XS signatures
-   need no *, and ${type} in typemap templates resolves cleanly to
-   e.g. Net__LibSSH — making &${type}_magic valid C. */
+   need no *. The typemap does not derive its vtable names from these:
+   xsubpp maps :: → __ inside ${type} only from 3.60 on, so a generic
+   T_MAGICEXT entry writing &${type}_magic expands to &Net::LibSSH_magic
+   — not valid C — on the older xsubpp this distribution still supports.
+   Every typemap entry therefore spells its vtable out literally. */
 typedef NLSS_Session *Net__LibSSH;
 typedef NLSS_Channel *Net__LibSSH__Channel;
 typedef NLSS_SFTP    *Net__LibSSH__SFTP;
@@ -229,7 +232,7 @@ channel(self)
     }
     Newxz(RETVAL, 1, NLSS_Channel);
     RETVAL->channel    = ch;
-    RETVAL->session_sv = SvREFCNT_inc(ST(0));
+    RETVAL->session_sv = SvREFCNT_inc(SvRV(ST(0)));
   OUTPUT:
     RETVAL
 
@@ -246,7 +249,7 @@ sftp(self)
     }
     Newxz(RETVAL, 1, NLSS_SFTP);
     RETVAL->sftp       = sftp;
-    RETVAL->session_sv = SvREFCNT_inc(ST(0));
+    RETVAL->session_sv = SvREFCNT_inc(SvRV(ST(0)));
   OUTPUT:
     RETVAL
 
