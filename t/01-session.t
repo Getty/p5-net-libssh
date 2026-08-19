@@ -30,6 +30,22 @@ for my $pair (
 eval { $ssh->option(bogus => 1) };
 like $@, qr/unknown option/i, 'option() croaks on unknown key';
 
+# option(port => ...) with a non-numeric value: SvUV() on a string that
+# doesn't look like a number silently becomes 0 (Perl warns "isn't
+# numeric" but does not die), and libssh's PORT setter then rejects 0
+# outright -- so this croaks via the same ssh_options_set error path as
+# any other rejected option value, not via the "unknown option" branch.
+{
+    my $s = Net::LibSSH->new;
+    my $rc = eval {
+        no warnings 'numeric';
+        $s->option(port => 'not-a-port');
+        1;
+    };
+    ok !$rc, 'option(port => non-numeric) croaks rather than silently accepting garbage';
+    like $@, qr/^Net::LibSSH::option:/, 'the croak is option()\'s own, naming it';
+}
+
 # connect to a port that immediately refuses — must return 0, not die
 {
     my $s = Net::LibSSH->new;
