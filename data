@@ -1,0 +1,32 @@
+---
+class: standard
+completed: 2026-08-19T23:29:50Z
+created: 2026-08-19T23:15:51Z
+id: 8
+priority: high
+started: 2026-08-19T23:17:28Z
+status: done
+tags:
+- xs
+- safety
+- crash
+title: channel()/sftp() refcount the reference, not the referent -- SIGSEGV
+updated: 2026-08-19T23:29:50Z
+---
+
+LibSSH.xs:232 (channel) and :249 (sftp) do RETVAL->session_sv = SvREFCNT_inc(ST(0)). ST(0) is the reference scalar -- the $ssh variable own SV -- not SvRV(ST(0)), the blessed magic-bearing object the typemap INPUT/OUTPUT operate on and the one carrying the MGVTBL whose svt_free calls ssh_free(). Incrementing the RV does not keep the referent alive once the RV stops pointing at it.
+
+Measured against a real sshd (libssh 0.10.6):
+  my $ssh = ...; my $ch = $ssh->channel;   then
+  - session var goes out of scope  -> works (the RV survives and keeps the referent)
+  - undef $ssh                     -> SIGSEGV on the next channel call
+  - $ssh = 42                      -> SIGSEGV
+
+The scope case working by accident is why this was never noticed. Reproduced independently of the test-writer report; both scenarios segfault reliably.
+
+Fix: SvREFCNT_inc(SvRV(ST(0))) at both sites, and SvREFCNT_dec on the same SV in nlss_channel_free / nlss_sftp_free (they already dec self->session_sv, so storing the referent there is consistent). Verified as a hypothesis in a throwaway scratch build by the test-writer -- NOT applied to tracked source.
+
+t/07-refcount-chain.t pins the channel() half under TODO, forked so the segfault kills only the child. It will start reporting an unexpected TODO pass when fixed; remove the TODO marker then. sftp() has the identical bug and no reproduction test yet -- decide whether it needs one.
+
+Downstream: Rex::LibSSH keeps channels alive past the scope that built the session, so this is a live crash risk, not theoretical.
+Fixed in 4cbb8cb. SvREFCNT_inc(SvRV(ST(0))) in channel() and sftp(). Verified independently of the worker report: undef, reassign and the sftp variant all survive now; the same test file against a blib built from the unfixed source fails 4 of 6. Suite 103 tests over 8 connection-opening files, nothing skipped.
