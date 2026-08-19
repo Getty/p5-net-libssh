@@ -77,11 +77,25 @@ Never add a `DESTROY` sub, in XS or in the `.pm` files.
 `SvREFCNT_inc(ST(0))` at construction and released with `SvREFCNT_dec` in their
 `svt_free`.
 
-That increment is the only thing guaranteeing the `ssh_session` outlives every
-channel opened on it. Drop it and a session going out of scope while a channel is
-still live frees the C session under the channel — a use-after-free that shows up
-as an unrelated crash much later. Any new object type that borrows the session
-must take the same reference.
+That increment is meant to guarantee the `ssh_session` outlives every channel
+opened on it. Any new object type that borrows the session must take the same
+reference.
+
+**It currently protects the wrong SV.** `ST(0)` is the reference scalar — the
+`$ssh` variable's own SV — not `SvRV(ST(0))`, the blessed magic-bearing object
+the typemap actually operates on. Holding the RV keeps the referent alive only
+as long as the RV still points at it, so:
+
+| what happens to the session variable | result |
+|---|---|
+| goes out of scope | works — the RV survives and keeps the referent |
+| `undef $ssh` | **SIGSEGV** on the channel's next libssh call |
+| `$ssh = anything_else` | **SIGSEGV** |
+
+The common case working is why this survived this long. `t/07-refcount-chain.t`
+reproduces it in a forked child under `TODO`; karr #8 has the fix
+(`SvREFCNT_inc(SvRV(ST(0)))` in both `channel()` and `sftp()`). Until that
+lands, treat this section as describing intent, not behaviour.
 
 ## Struct and typedef layout
 
@@ -177,8 +191,9 @@ These are behaviour, not style. Changing one is a breaking change for
 - **`auth_agent()` silently falls back to `ssh_userauth_publickey_auto`** when
   the agent is missing or refuses. A return of 1 is not evidence that an agent
   was used.
-- **`option()` croaks on an unknown key.** The set is a closed `strcmp` chain;
-  extending it means extending the POD too.
+- **`option()` croaks on an unknown key, and again on a value libssh rejects.**
+  The key set is a closed `strcmp` chain; extending it means extending the POD
+  too.
 
   | key | libssh option | conversion |
   |---|---|---|
@@ -191,17 +206,32 @@ These are behaviour, not style. Changing one is a breaking change for
   | `log_verbosity` | `SSH_OPTIONS_LOG_VERBOSITY` | `SvIV` |
   | `strict_hostkeycheck` | `SSH_OPTIONS_STRICTHOSTKEYCHECK` | `SvTRUE` |
 
-  The numeric conversions are silent. `option(port => 'nonsense')` sets port 0
-  and returns normally, because `SvUV` of a non-numeric string is 0 — the croak
-  covers unknown keys, not unusable values.
+  The Perl-side conversion is silent: `SvUV`/`SvIV` of a non-numeric string is 0,
+  with a runtime warning at most. Whether that becomes an error is libssh's
+  decision, and it is not uniform — measured, not inferred:
+
+  ```
+  port          => 'nonsense'   croaks: Invalid argument in ssh_options_set
+  timeout       => 'nonsense'   accepted silently as 0
+  log_verbosity => 'nonsense'   accepted silently as 0
+  ```
+
+  `port` only croaks because libssh rejects port 0 in particular. There is no
+  validation on this side of the boundary, so do not read the croak as one.
 - **`read()` with no argument (or `-1`) slurps until EOF.** `read(undef)` is a
   trap: `SvIV(undef)` is 0, so it takes the fixed-length branch with length 0,
   reads nothing and returns the empty string. Both branches end on
   `ssh_channel_read() <= 0` and yield a string either way, so **`read()` cannot
   distinguish EOF from a read error** — neither returns undef, neither croaks.
   Documented in the POD; keep it documented.
-- **`exit_status()` returns -1 until the remote process has exited** — read the
-  output first.
+- **`exit_status()` returns -1 until the remote process has exited.** The POD
+  tells callers to drain the output first, but that is advice, not a
+  requirement: on libssh 0.10.6, `ssh_channel_get_exit_status()` pumps the
+  session's packet loop itself, so calling it first returns the right code and
+  leaves the undrained output buffered for a later `read()`. Measured in
+  `t/06-exit-status-ordering.t`, which guards every such call with `alarm()`
+  precisely because a libssh build that blocks instead would hang the suite
+  rather than fail it. Treat the drain-first order as the supported one.
 - **`close()` sets `self->channel = NULL`; every other channel method croaks
   from then on.** The message is `"<fully qualified method>: channel is
   closed"`. `exit_status()` must still be read *before* `close()` — it now fails

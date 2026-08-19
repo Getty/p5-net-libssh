@@ -60,24 +60,35 @@ it.
 
 2. **The harness usually has SFTP.** `TestSSHD` writes `Subsystem sftp …`
    whenever it finds an sftp-server binary, so the box under test is *not* the
-   box this distribution exists for. It exposes `has_sftp` for exactly this
-   reason. Proving the SFTP-free path needs a harness variant started *without*
-   the subsystem, and the assertion is that exec-channel work succeeds anyway —
-   not merely that `sftp()` returned undef. That gap is real and worth a ticket.
+   box this distribution exists for. `TestSSHD->start(sftp => 0)` omits the
+   Subsystem line regardless of what is installed, and `has_sftp` reports
+   accordingly; `t/04-no-sftp.t` uses it to assert that exec-channel work
+   succeeds anyway — not merely that `sftp()` returned undef.
 
 3. **A stale `blib/` runs the previous `.so`.** Recompile after touching
    `LibSSH.xs` or `typemap`, or you are testing the last build.
 
-## Gaps worth filling when asked
+## What is already covered
 
-`read` with an explicit length and with `is_stderr` set; `read(undef)` returning
-empty (the documented trap — assert it, so a future change to the argument
-handling is caught); `write` + `send_eof` into a command that reads stdin;
-`eof` after the remote closes; `exit_status` read before any output is drained;
-a channel outliving its session variable (the refcount chain — create a channel,
-undef the session, then still use the channel); binary data through `write`/`read`
-without encoding-layer mangling; `option(port => …)` with a non-numeric value;
-and a repetition loop that would surface a leak in `channel()`/`sftp()`.
+Read the file before adding to it — the contract surface is largely pinned now.
+
+| file | covers |
+|---|---|
+| `t/01-session.t` | option keys, unknown-key croak, non-numeric port, refused connect |
+| `t/02-integration.t` | connect, auth, exec, read, exit status, sftp stat |
+| `t/03-channel-after-close.t` | every channel method croaking after `close`, idempotent `close` |
+| `t/04-no-sftp.t` | the SFTP-free product claim, via `start(sftp => 0)` |
+| `t/05-channel-io.t` | `read($len)`, `read($len, $stderr)`, `read(undef)`, write+send_eof, `eof`, binary round trip |
+| `t/06-exit-status-ordering.t` | `exit_status` before the output is drained, with `alarm()` guards |
+| `t/07-refcount-chain.t` | the refcount segfault, TODO-marked, forked (karr #8) |
+
+Still open: a repetition loop that would surface a leak in `channel()`/`sftp()`,
+and an `sftp()`-side reproduction of the karr #8 refcount bug.
+
+**Wrap anything that might block in `alarm()`.** A test that hangs takes the
+whole suite with it and reports nothing; a test that fails names the problem.
+Same for anything that might crash: fork it, so the segfault kills one child
+rather than `prove`.
 
 ## Workflow
 
@@ -87,7 +98,17 @@ and a repetition loop that would surface a leak in `channel()`/`sftp()`.
 3. Assert against the *contract* (what a caller, especially `Rex::LibSSH`,
    depends on), not against what the code currently emits. If those differ, that
    difference is the finding — report it, don't encode it.
-4. `prove -lv t/<file>.t` until green, then the full suite.
+4. There is no `Makefile.PL` in the working directory, so `prove` has no
+   `blib/`. Build somewhere writable and test there — and `git add` a new test
+   file first, or `Git::GatherDir` will not pick it up and it silently will not
+   run:
+
+   ```bash
+   dzil build --in /tmp/nlss-check --no-tgz
+   cd /tmp/nlss-check && perl Makefile.PL && make && prove -bv t/<file>.t
+   ```
+
+   Then `dzil test` for the full suite.
 5. Clean up remote state — tests write into `/tmp` on the target; use `$$` in
    names and remove what you create.
 
