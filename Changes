@@ -6,6 +6,11 @@ Revision history for Net-LibSSH
   - Fix segfault when a channel or SFTP session is used after the session
     variable it was opened on has been undef-ed or reassigned; the session
     now stays alive until the last object opened on it is gone
+  - Fix segfault when a channel or SFTP session is used, or merely dropped,
+    after disconnect(); ssh_disconnect() frees those objects inside libssh,
+    so they are now invalidated instead of left dangling. Their methods
+    croak with "session was disconnected", close() on such a channel stays a
+    harmless no-op, and nothing is leaked on the way
 
 0.002     2026-03-29 14:49:04Z
   - Refactor XS internals: replace sv_setref_pv/DESTROY with
