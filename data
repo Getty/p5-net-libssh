@@ -1,0 +1,17 @@
+---
+class: standard
+completed: 2026-08-19T23:29:38Z
+created: 2026-08-19T23:10:04Z
+id: 7
+priority: low
+started: 2026-08-19T23:29:38Z
+status: done
+tags:
+- xs
+- docs
+title: LibSSH.xs typedef comment contradicts the typemap it explains
+updated: 2026-08-19T23:29:38Z
+---
+
+The comment above the pointer typedefs (LibSSH.xs:21-24) says: "${type} in typemap templates resolves cleanly to e.g. Net__LibSSH — making &${type}_magic valid C." The typemap does not do that: all six INPUT/OUTPUT entries hardcode the vtable name (&Net__LibSSH__Channel_magic etc). The net-libssh-core skill gives the reason — the :: -> __ transformation of ${type} only exists in xsubpp >= 3.60, so a generic T_MAGICEXT entry would break on the Perl versions this distribution still supports. So the comment justifies the pointer typedefs with a mechanism the code deliberately avoids. A worker adding a fourth object type may read it, write a generic entry, and get a C syntax error on older xsubpp with no hint where it came from. Fix: keep the first half (pointer typedefs mean XS signatures need no *), replace the ${type} claim with why the vtable names are spelled out instead. Comment-only change to LibSSH.xs.
+Fixed in 4cbb8cb alongside #8.
