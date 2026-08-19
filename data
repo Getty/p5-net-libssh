@@ -1,0 +1,19 @@
+---
+claimed_at: 2026-08-19T19:14:09Z
+claimed_by: worker-xs
+class: standard
+completed: 2026-08-19T22:59:36Z
+created: 2026-08-13T15:29:09Z
+id: 3
+priority: medium
+started: 2026-08-19T19:14:09Z
+status: done
+tags:
+- xs
+- safety
+title: Channel methods after close() dereference a NULL channel
+updated: 2026-08-19T22:59:36Z
+---
+
+Net::LibSSH::Channel::close sets self->channel = NULL after freeing the C channel. Every other channel XSUB (read, write, send_eof, eof, exit_status) passes self->channel straight to libssh without a NULL guard. Whether that segfaults or is absorbed by libssh has not been verified. The POD already tells callers to read exit_status before close, but a caller that gets the order wrong should get a croak, not undefined behaviour. Verify the actual behaviour, then either add a guard that croaks with a clear message or document the constraint as hard.
+Implemented and committed in 47276d2. nlss_channel_check_open() croaks on exec/read/write/send_eof/eof/exit_status; close() left unguarded so it stays idempotent for svt_free. Verified behaviour first: libssh absorbed the NULL and returned exit_status -1 / read '' rather than segfaulting, i.e. silent wrong answers. t/03-channel-after-close.t (22 tests) runs green against a real sshd.
