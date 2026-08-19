@@ -1,0 +1,35 @@
+---
+class: standard
+completed: 2026-08-19T23:57:19Z
+created: 2026-08-19T23:26:33Z
+id: 9
+priority: high
+started: 2026-08-19T23:38:16Z
+status: done
+tags:
+- xs
+- safety
+- crash
+title: disconnect() frees every channel inside libssh -- use-after-free on a live
+  channel/sftp
+updated: 2026-08-19T23:57:19Z
+---
+
+Found while verifying #8; pre-existing and NOT introduced by the #8 fix (reproduced identically on a build of the unfixed source).
+
+ssh_disconnect() in libssh 0.10.x walks session->channels and frees them all. Net::LibSSH::disconnect (LibSSH.xs:166-170) calls it directly, so every live Net::LibSSH::Channel keeps a dangling ssh_channel pointer, and NLSS_SFTP keeps an sftp_session whose channel is gone. The refcount chain cannot help here: the session SV is still perfectly alive, it is the C-level children that were freed underneath it.
+
+Measured against a real sshd, libssh 0.10.6, each case in a forked child:
+
+  my $ssh = ...; my $ch = $ssh->channel; $ssh->disconnect;
+  $ch->exec(...)                -> SIGSEGV
+  undef $ch  (i.e. svt_free)    -> SIGSEGV  (nlss_channel_free calls ssh_channel_send_eof on the freed channel)
+  $sftp->stat(...) after disconnect -> SIGSEGV
+
+nlss_channel_check_open does not catch it: self->channel is non-NULL, it just points at freed memory. Same shape as the closed-channel bug fixed in {{$NEXT}}, but close() at least NULLs the pointer; disconnect() has no way to reach the children at all.
+
+Needs a design decision, not a one-liner. Options: (a) have the session keep a list/weak registry of its channel+sftp structs and NULL their C pointers in disconnect(); (b) give NLSS_Session a generation counter that channels copy at construction and check in nlss_channel_check_open; (c) document disconnect() as invalidating every channel and leave it -- weakest, since the GC path (undef $ch) crashes without the caller touching the channel again.
+
+Rex::LibSSH does call disconnect() on teardown, so the GC-path crash is reachable downstream.
+Design decision by the maintainer: option (b), generation counter. Rationale over the registry: no bookkeeping to forget on the free path, so no way to leave a freed pointer in a registry; it reuses the session_sv link that already exists and only extends the existing guard instead of replacing it.
+Fixed in a052022. Generation counter as decided. Verified independently: t/08-disconnect-invalidates.t fails 12 of 16 against a blib built from the unfixed XS, every failure a SIGSEGV; 17/17 with the fix; dzil test 123/123. One thing the design decision did not foresee: skipping sftp_free() when stale would have leaked ~1.6 kB per object, because ssh_disconnect() frees the sftp session's channel but not the struct. Resolved by NULLing sftp->channel before sftp_free() -- the single place in this distribution that depends on a libssh internal, now recorded in net-libssh-core.
