@@ -1,6 +1,8 @@
 Revision history for Net-LibSSH
 
 {{$NEXT}}
+  - Channel methods (exec, read, write, send_eof, eof, exit_status) now
+    croak instead of operating on a closed channel; close() stays idempotent
 
 0.002     2026-03-29 14:49:04Z
   - Refactor XS internals: replace sv_setref_pv/DESTROY with

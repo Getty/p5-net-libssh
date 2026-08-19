@@ -83,6 +83,13 @@ nlss_croak_error(pTHX_ ssh_session session, const char *prefix)
     Perl_croak(aTHX_ "%s: %s", prefix, msg ? msg : "(unknown error)");
 }
 
+static void
+nlss_channel_check_open(pTHX_ NLSS_Channel *self, const char *prefix)
+{
+    if (!self->channel)
+        Perl_croak(aTHX_ "%s: channel is closed", prefix);
+}
+
 static SV *
 nlss_channel_slurp(pTHX_ ssh_channel ch, int is_stderr)
 {
@@ -251,6 +258,7 @@ exec(self, cmd)
     Net::LibSSH::Channel  self
     const char           *cmd
   CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::exec");
     RETVAL = (ssh_channel_request_exec(self->channel, cmd) == SSH_OK) ? 1 : 0;
   OUTPUT:
     RETVAL
@@ -259,6 +267,7 @@ SV *
 read(self, ...)
     Net::LibSSH::Channel self
   CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::read");
     int is_stderr = 0;
     int len       = -1;
     if (items >= 2) len       = SvIV(ST(1));
@@ -286,6 +295,7 @@ write(self, data)
     Net::LibSSH::Channel  self
     SV                   *data
   CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::write");
     STRLEN      len;
     const char *ptr = SvPV(data, len);
     RETVAL = ssh_channel_write(self->channel, ptr, (uint32_t) len);
@@ -296,12 +306,14 @@ void
 send_eof(self)
     Net::LibSSH::Channel self
   CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::send_eof");
     ssh_channel_send_eof(self->channel);
 
 int
 eof(self)
     Net::LibSSH::Channel self
   CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::eof");
     RETVAL = ssh_channel_is_eof(self->channel);
   OUTPUT:
     RETVAL
@@ -310,6 +322,7 @@ int
 exit_status(self)
     Net::LibSSH::Channel self
   CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::exit_status");
     RETVAL = ssh_channel_get_exit_status(self->channel);
   OUTPUT:
     RETVAL
