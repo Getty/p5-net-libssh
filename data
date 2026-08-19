@@ -1,0 +1,19 @@
+---
+claimed_at: 2026-08-19T19:14:14Z
+claimed_by: tester-sftp
+class: standard
+completed: 2026-08-19T22:59:49Z
+created: 2026-08-13T15:28:44Z
+id: 1
+priority: high
+started: 2026-08-19T19:14:14Z
+status: done
+tags:
+- test
+- xs
+title: SFTP-free path is not covered by any test
+updated: 2026-08-19T22:59:49Z
+---
+
+The product claim of this distribution is that exec-channel operation works on hosts without an SFTP subsystem. t/lib/TestSSHD.pm writes "Subsystem sftp ..." whenever it finds an sftp-server binary, so on a normal dev box the server under test always has SFTP. The unless($srv->has_sftp) branch in t/02-integration.t therefore never runs here. Needed: a harness variant started without the subsystem, asserting that channel/exec work succeeds anyway and that sftp() returns undef without dying.
+Committed in 6f621a6. TestSSHD->start(sftp => 0) omits the Subsystem line regardless of what is installed; t/04-no-sftp.t (11 tests) proves exec/read/exit_status work and sftp() returns undef without dying, and skip_all's if the harness ever advertises sftp anyway. Verified running -- not skipped -- against a real sshd on this box.
