@@ -1,0 +1,19 @@
+---
+claimed_at: 2026-08-19T19:13:42Z
+claimed_by: main
+class: standard
+completed: 2026-08-19T22:59:23Z
+created: 2026-08-13T15:28:56Z
+id: 2
+priority: medium
+started: 2026-08-19T19:07:45Z
+status: done
+tags:
+- build
+title: 'Two divergent build paths: untracked pkg-config Makefile.PL vs dzil/Alien::libssh'
+updated: 2026-08-19T22:59:23Z
+---
+
+The Makefile.PL in the working directory is untracked (.gitignore) and hand-written: it resolves flags via pkg-config. The Makefile.PL that dzil generates (see Net-LibSSH-0.002/Makefile.PL) goes through Alien::libssh->cflags/->libs. A perl Makefile.PL && make && make test cycle therefore links against a different libssh than the release does, and a green local run says nothing about the released build. The old CLAUDE.md documented that local cycle as the build instruction. Decide: delete the stray file, or keep it and document it as a dev-only shortcut.
+Makefile.PL already gone from the working tree; README build section removed in c8beb35. Remaining work was doc-only: CLAUDE.md Build section and rules hazard #1 still described the stray file as present. Both rewritten to 'dzil is the only build path, do not reintroduce a Makefile.PL'.
+net-libssh-core skill Build section was the last place still describing the stray pkg-config Makefile.PL as present; rewritten in 97f217d alongside CLAUDE.md and rules hazard #1. All three now agree: dzil is the only build path.
