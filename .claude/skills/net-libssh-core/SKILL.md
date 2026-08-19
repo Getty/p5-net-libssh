@@ -81,21 +81,27 @@ That increment is meant to guarantee the `ssh_session` outlives every channel
 opened on it. Any new object type that borrows the session must take the same
 reference.
 
-**It currently protects the wrong SV.** `ST(0)` is the reference scalar — the
-`$ssh` variable's own SV — not `SvRV(ST(0))`, the blessed magic-bearing object
-the typemap actually operates on. Holding the RV keeps the referent alive only
-as long as the RV still points at it, so:
+**Take the reference on `SvRV(ST(0))`, never on `ST(0)`.** `ST(0)` is the
+reference scalar — the `$ssh` variable's own SV; the referent is the blessed
+magic-bearing SV the typemap operates on and whose `svt_free` calls `ssh_free()`.
+Through 0.002 the increment was on `ST(0)`, which keeps the referent alive only
+while the RV still points at it:
 
-| what happens to the session variable | result |
-|---|---|
-| goes out of scope | works — the RV survives and keeps the referent |
-| `undef $ssh` | **SIGSEGV** on the channel's next libssh call |
-| `$ssh = anything_else` | **SIGSEGV** |
+| what happens to the session variable | through 0.002 | now |
+|---|---|---|
+| goes out of scope | worked | works |
+| `undef $ssh` | **SIGSEGV** | works |
+| `$ssh = anything_else` | **SIGSEGV** | works |
 
-The common case working is why this survived this long. `t/07-refcount-chain.t`
-reproduces it in a forked child under `TODO`; karr #8 has the fix
-(`SvREFCNT_inc(SvRV(ST(0)))` in both `channel()` and `sftp()`). Until that
-lands, treat this section as describing intent, not behaviour.
+Dereferencing `ST(0)` there is safe: the typemap INPUT block runs before `CODE`
+and croaks unless `SvROK(_sv) && SvMAGICAL(SvRV(_sv))`, and OUTPUT overwrites
+`ST(0)` only afterwards. The free side needs nothing special — `SvREFCNT_dec` is
+symmetric with whatever was stored.
+
+Note which case survived the bug: the one a test reaches for first. A refcount
+mistake here is invisible under scope-exit and fatal under `undef`.
+`t/07-refcount-chain.t` covers all three ways of losing the variable, times both
+object types, each in a forked child.
 
 ## Struct and typedef layout
 
@@ -238,6 +244,14 @@ These are behaviour, not style. Changing one is a breaking change for
   loudly instead of returning -1, which a caller cannot tell apart from "the
   process has not exited yet". `close()` itself is idempotent and deliberately
   unguarded, because `svt_free` walks the same path when the SV is collected.
+- **`disconnect()` invalidates every live channel and SFTP session — and
+  currently crashes.** `ssh_disconnect()` walks `session->channels` and frees
+  them inside libssh, so every `NLSS_Channel` keeps a dangling `ssh_channel`.
+  `nlss_channel_check_open()` does not catch this: the pointer is non-NULL, it
+  just points at freed memory. Using the channel segfaults, and so does merely
+  dropping it, because `nlss_channel_free` calls `ssh_channel_send_eof` on the
+  freed channel. karr #9; unfixed, and it needs a design decision rather than a
+  guard.
 - **A channel runs one command per lifetime.** `exec` is called once; a second
   command needs a new `$ssh->channel`.
 - **Not fork-safe, not thread-safe.** One session per process, as the POD says.
