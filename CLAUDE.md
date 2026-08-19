@@ -39,7 +39,7 @@ $ch->close;
 ## Build
 
 This is an XS module — requires a C compiler and libssh headers, supplied by
-`Alien::libssh`. The canonical build is Dist::Zilla (`[@Author::GETTY]` with
+`Alien::libssh`. Dist::Zilla is the only build path (`[@Author::GETTY]` with
 `xs_alien = Alien::libssh`, `xs_object = LibSSH`):
 
 ```bash
@@ -47,9 +47,11 @@ dzil build
 dzil test
 ```
 
-The `Makefile.PL` in the working directory is untracked and hand-written against
-`pkg-config`; it is **not** the file `dzil` generates. It is fine for a quick
-local compile, but a green `make test` is not evidence about the release build.
+There is deliberately no `Makefile.PL` in the working directory. A hand-written
+one resolving flags via `pkg-config` used to live here; it linked against a
+different libssh than the release does, so a green local `make test` said
+nothing about the released build. Don't reintroduce it — build configuration
+belongs in `dist.ini`.
 
 ## Delegation
 
@@ -67,6 +69,6 @@ The agents carry their skills via `briefing.skills` (see `.claude/agents/`); the
 main agent delegates rather than loading them. Skill sources live under
 `.claude/skills/` — `net-libssh-core` holds the XS binding architecture
 (`sv_magicext`/MGVTBL lifecycle, the per-type typemap and its escaping rules,
-the session refcount chain, the API contracts); `perl-core`,
-`perl-release-author-getty`, `perl-release-dist-ini` and `karr` are hardlinked
-shared skills.
+the session refcount chain, the API contracts); `getty-perl-core`,
+`getty-perl-release-author-getty`, `perl-release-dist-ini` and
+`kanban-issues-karr-cli` are hardlinked shared skills.

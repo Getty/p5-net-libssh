@@ -5,11 +5,11 @@ model: sonnet
 allowed-tools: Read, Bash, Glob, Grep
 briefing:
   skills:
-    - perl-release-author-getty
+    - getty-perl-release-author-getty
     - perl-release-dist-ini
-    - perl-core
+    - getty-perl-core
     - net-libssh-core
-    - karr
+    - kanban-issues-karr-cli
 ---
 
 You are the `net-libssh-release-checker` for **Net::LibSSH**. Conventions from
@@ -82,7 +82,7 @@ maintainer releases. **Never** run `dzil release` or upload to CPAN.
 
 ## Downstream — this distribution is an upstream
 
-`Rex::LibSSH` (`~/dev/perl/rex-libssh`) pins `Net::LibSSH` in its `cpanfile` and
+`Rex::LibSSH` (`~/dev/perl/getty-rex-libssh`) pins `Net::LibSSH` in its `cpanfile` and
 drives Hetzner dedicated servers through it; `Rex::GPU` and `Rex::Rancher` sit
 behind that. A behaviour change in `connect`, `channel`, `read`, `exit_status` or
 `sftp` reaches production deploys there. Any such change belongs in your report,

@@ -1,6 +1,6 @@
 ---
-name: perl-release-author-getty
-description: "Load when dist.ini contains [@Author::GETTY] — bundle options, POD conventions (=attr/=method/=opt), next-version semantics, dzil release workflow, copyright_year, Changes/{{$NEXT}}"
+name: getty-perl-release-author-getty
+description: Load when a dist.ini contains [@Author::GETTY] — bundle options, POD conventions (=attr/=method/=opt), next-version semantics, the dzil release workflow.
 user-invocable: false
 allowed-tools: Read, Grep
 model: sonnet
@@ -16,6 +16,20 @@ author = Name <email>
 license = Perl_5
 copyright_holder = Copyright Owner
 ```
+
+## When the bundle applies
+
+`[@Author::GETTY]` is for Getty's own CPAN work. A distribution that is not
+released to CPAN — a proprietary application, a deploy artefact — lists its
+Dist::Zilla plugins explicitly instead, because the bundle assumes a CPAN
+release. Non-CPAN dists that still use the bundle set `no_cpan = 1`.
+
+## `# ABSTRACT` lines
+
+Every file the bundle processes carries `# ABSTRACT: <one line>` directly under
+`package`, before any `use`; executables in `bin/` carry it under the shebang.
+PodWeaver turns it into the NAME section. Outside a bundle-managed distribution
+the line does nothing — do not scatter it into files Dist::Zilla never sees.
 
 ## @Author::GETTY Options
 
@@ -105,6 +119,16 @@ For wrapping C libraries with Alien::Base:
 - `run_before_build`, `run_after_build`
 - `run_before_release`, `run_after_release`
 - `run_release`, `run_test`
+
+Use a run hook for the project-specific step that follows a release — a Docker
+build and push, a deploy script — so it travels with `dzil release` instead of
+living in someone's shell history. Never wire up a step the bundle already
+performs; the hook is for what it does *not* know about.
+
+```ini
+[Run::Release]
+run = docker build -t registry/app:%v %d && docker push registry/app:%v
+```
 
 ## POD Commands (Pod::Elemental::Transformer::Author::GETTY)
 

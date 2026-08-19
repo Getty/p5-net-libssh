@@ -63,7 +63,7 @@ behavior too, but they belong to `net-libssh-doc-writer`. `Changes` prose is not
 ## Coordination — karr board (always in scope)
 
 Ticket coordination is the orchestrating agent's job, so `karr` is always in
-scope — don't invoke the `karr` skill first, just use it. Git-native kanban;
+scope — don't invoke the `kanban-issues-karr-cli` skill first, just use it. Git-native kanban;
 state lives in `refs/karr/*`; this repo has its own board.
 
 - `karr list --compact` / `karr board` — open work · `karr show ID` — detail
@@ -98,12 +98,12 @@ handle a specific issue. Every write publishes under the maintainer's name.
 
 ## Net::LibSSH — project-specific hazards
 
-1. **Two build paths, and the local one is not the release one.** The
-   `Makefile.PL` in the working directory is untracked, hand-written, and
-   resolves flags via `pkg-config`. `dzil` generates a completely different one
-   that goes through `Alien::libssh`. A green `make test` says nothing about the
-   release build, and editing the local `Makefile.PL` is editing a file `dzil`
-   overwrites. Build config lives in `dist.ini` (`xs_alien`, `xs_object`).
+1. **`dzil` is the only build path.** There is no `Makefile.PL` in the working
+   directory and none belongs there — `dzil` generates one that goes through
+   `Alien::libssh`. A hand-written `pkg-config` variant used to sit here and
+   linked against a different libssh than the release does, so its green
+   `make test` said nothing about the release build. Don't reintroduce it; build
+   config lives in `dist.ini` (`xs_alien`, `xs_object`).
 
 2. **A stale `blib/` runs the previous `.so`.** After touching `LibSSH.xs` or
    `typemap`, recompile before testing — otherwise the suite tests the last
@@ -132,8 +132,8 @@ handle a specific issue. Every write publishes under the maintainer's name.
 
 ## Perl specifics — reference, don't restate
 
-Module loading, dependency pinning and house style live in skill `perl-core`.
-Release mechanics live in `perl-release-author-getty` and
+Module loading, dependency pinning and house style live in skill `getty-perl-core`.
+Release mechanics live in `getty-perl-release-author-getty` and
 `perl-release-dist-ini`. The XS binding architecture, typemap rules and API
 contracts live in skill `net-libssh-core`. All four are force-loaded for
 `net-libssh-*` agents. Do not duplicate that content here.

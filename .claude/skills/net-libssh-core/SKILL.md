@@ -1,6 +1,6 @@
 ---
 name: net-libssh-core
-description: "Architecture and binding contracts of Net::LibSSH — the XS surface over libssh (not libssh2), the sv_magicext + MGVTBL object lifecycle that replaces DESTROY, the per-type typemap and why the generic T_MAGICEXT/T_PTROBJ entries are wrong here, the session refcount chain that keeps a Channel's session alive, the API contracts (sftp() returns undef, read() slurps, exit_status before close), and the two divergent build paths (dzil/Alien::libssh vs. the untracked pkg-config Makefile.PL)."
+description: Load before editing Net::LibSSH — the XS surface over libssh, the sv_magicext object lifecycle that replaces DESTROY, the typemap, the session refcount chain, the dzil-only build path.
 metadata:
   type: project
 ---
@@ -21,7 +21,7 @@ need no SFTP subsystem on the remote host.** SFTP exists as an optional extra an
 degrades to `undef` rather than dying. If a code path in here ever makes SFTP
 mandatory, the distribution has lost the thing it exists for.
 
-Downstream consumer: `Rex::LibSSH` (`~/dev/perl/rex-libssh`), which reimplements
+Downstream consumer: `Rex::LibSSH` (`~/dev/perl/getty-rex-libssh`), which reimplements
 Rex's four connection interfaces on top of this module, for Hetzner dedicated
 servers whose sshd ships without `Subsystem sftp`. `Rex::LibSSH` pins this
 distribution in its `cpanfile`, so a behaviour change here reaches its deploys.
@@ -181,9 +181,9 @@ These are behaviour, not style. Changing one is a breaking change for
   command needs a new `$ssh->channel`.
 - **Not fork-safe, not thread-safe.** One session per process, as the POD says.
 
-## Build — two divergent paths, only one of them ships
+## Build — dzil is the only path
 
-The release build is Dist::Zilla: `[@Author::GETTY]` with `xs_alien =
+The build is Dist::Zilla: `[@Author::GETTY]` with `xs_alien =
 Alien::libssh` and `xs_object = LibSSH` in `dist.ini`. It generates a
 `Makefile.PL` that resolves flags via `Alien::libssh->cflags` / `->libs`.
 
@@ -193,10 +193,9 @@ dzil test      # the suite as it will be released
 prove -lr t/   # needs a Makefile-built blib/ first
 ```
 
-**The `Makefile.PL` sitting in the working directory is not that file.** It is
-untracked (`.gitignore`), hand-written, and resolves flags via `pkg-config`
-instead of `Alien::libssh`. A `perl Makefile.PL && make && make test` cycle
-therefore builds against whatever libssh `pkg-config` finds, which is not what
-the release links against. Use it for a quick local compile if you like, but
-**never treat a green `make test` as evidence about the release**, and never
-edit it expecting the change to survive — `dzil` overwrites it.
+**There is deliberately no `Makefile.PL` in the working directory.** A
+hand-written one resolving flags via `pkg-config` used to sit here; it built
+against whatever libssh `pkg-config` found, which is not what the release links
+against, so a green local `make test` was no evidence about the release. Don't
+reintroduce it — build configuration belongs in `dist.ini`, and `dzil`
+overwrites any `Makefile.PL` in place anyway.

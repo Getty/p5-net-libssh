@@ -1,6 +1,6 @@
 ---
-name: karr
-description: Use when managing Git-native kanban tasks or shared helper refs with the karr CLI in agent workflows.
+name: kanban-issues-karr-cli
+description: Use when picking up, claiming, handing off or creating agent tickets with the karr CLI, or when reading a repo's karr board.
 ---
 
 # karr — Kanban Assignment & Responsibility Registry
@@ -14,11 +14,21 @@ temporary task/config view only while they run.
 ### Initialize
 
 ```bash
-karr init [--name NAME] [--statuses s1,s2,s3] [--claude-skill]
+karr init [--name NAME] [--statuses s1,s2,s3] [--claude-skill] [--new-board]
 ```
 
 Creates the board refs inside the current Git repository. With
 `--claude-skill`, installs this skill to `.claude/skills/karr/SKILL.md`.
+
+Before it writes anything, init asks the remote whether this repository already
+has a board there: `git clone` does not fetch `refs/karr/*`, so a fresh clone
+looks exactly like a repository that never had one. A remote that advertises
+`refs/karr/*` means the board exists and is one `karr sync` away, so init
+refuses and says so rather than starting a second board beside it. Every other
+answer -- no remote, an unreachable one, no answer inside the probe budget --
+lets init through, because it has to work offline. Use `--new-board` only when
+a clone is really meant to keep its own, independent board: the two will not
+sync with each other, and the board-identity guard is what stops them.
 
 ### Create task
 
@@ -26,6 +36,8 @@ Creates the board refs inside the current Git repository. With
 karr create "Title" [--status STATUS] [--priority PRIORITY] [--tags t1,t2] [--body TEXT]
 karr create --title "Title" --assignee NAME --due 2026-03-15
 karr create "Ship it" --depends-on 2,3       # ids of tasks this one depends on; each must exist on this board
+karr create "Wait for the fix" --needs other-repo#7   # waits on a card in ANOTHER repository of the fleet
+karr create "Fix the thing" --escalated-from home#5   # the card raised in that other repository
 ```
 
 ### List tasks
@@ -68,6 +80,8 @@ karr edit ID --title "New title"
 karr edit ID --priority high --add-tag urgent
 karr edit ID --add-depends-on 2,3            # append dependency ids (no duplicates; ids must exist, no self-reference)
 karr edit ID --remove-depends-on 4           # absent ids are a no-op (cleanup after a deleted dependency)
+karr edit ID --add-needs other-repo#7        # append a cross-board dependency (see below)
+karr edit ID --remove-needs other-repo#7     # absent references are a no-op
 karr edit ID --body "New description"
 karr edit ID -a "Appended note"              # append to body
 karr edit ID --claim agent-1                 # claim
@@ -133,6 +147,41 @@ karr handoff ID --claim agent-1 --block "waiting for feedback" --release
 ```
 
 Moves the task to the board's review column, refreshes the claim, and optionally appends a timestamped note, blocks, or releases the claim. On a board that configures a `review` status that is the target; a board without one hands off to its last non-terminal column instead of failing.
+
+### Cross-board dependencies
+
+`--depends-on` is board-local. When work here cannot proceed until something is
+fixed in *another repository*, that link is a cross-board dependency:
+
+```bash
+# in the other repository -- raise the card and record where it came from
+karr create "Fix the API" --escalated-from home#5
+
+# here -- record what you are waiting for, block, release the claim, leave
+karr edit 5 --add-needs other-repo#7 --block "needs other-repo#7: API change first" --release
+
+# any time -- what is this board waiting on, and is it done yet?
+karr needs
+karr needs --board other-repo=/srv/other-repo     # where that board is on THIS machine
+karr needs --resolve                              # drop settled links, unblock what is free
+```
+
+A reference is `BOARD#ID`: the other board's **name** and a task id. Never a
+path -- the card is shared state and two clones of the same fleet have
+different directories. karr turns the name into a directory from
+`--board NAME=PATH` or from the fleet config
+(`~/.config/karr-foundation/config.yml`, `--fleet-config` to point elsewhere),
+matching the repository's directory basename.
+
+`--resolve` settles a link whose far card has reached one of the **far** board's
+own terminal statuses, and lifts the `blocked` flag when a card's last link
+settles, printing the reason it lifted. A far card that does not exist settles
+nothing. A board this machine cannot place is reported, not fatal.
+
+Like `depends_on`, a cross-board link blocks nothing by itself: `pick` hands the
+card over and says what it waits on. The `blocked` flag is what keeps the card
+out of `pick` and out of karr-foundation's selection -- the link is the fact,
+`blocked` is the decision.
 
 ### Config
 
@@ -224,12 +273,31 @@ Use this when you want explicit control over board ref exchange with the remote
 instead of relying only on the implicit pull/push behavior of mutating
 commands.
 
-**A fresh clone has no board yet.** `git clone` does not fetch `refs/karr/*`,
-and the read commands (`board`, `list`, `show`, `log`, `context`, and `config
-show`/`config get`) do not pull — only mutating commands do. So they refuse
-with exit 1 and say so, rather than rendering an empty board. Run `karr sync`
-first; do **not** run `karr init` there, which would start a second, empty
-board beside the one on the remote.
+`karr sync` also carries `refs/karr-foundation/*` — karr-foundation's shared
+chain, run logs, question mailbox and design documents — in the same run,
+after the board and never on its own. One command on purpose: a separate one
+would be a second thing to remember, and a coordination namespace nobody
+synced fails quietly. Mutating commands still sync the board only, so this
+costs nothing outside an explicitly typed `karr sync`, and a repository
+holding nothing under `refs/karr-foundation/` pushes nothing there. Deletions
+in that namespace (log retention, a cleared chain) travel like board deletions
+do, so a pruned run log does not come back on the next pull.
+
+**A fresh clone fetches the board by itself.** `git clone` does not carry
+`refs/karr/*`, so a new checkout holds no board while the whole board sits on
+its remote. The read commands (`board`, `list`, `show`, `log`, `context`, and
+`config show`/`config get`) do not pull as a rule — only mutating commands do —
+but where there is nothing under `refs/karr/` at all and the remote has a
+board, they fetch it once and answer, with one line on STDERR (never STDOUT)
+saying where it came from. Where there is no remote, or the remote has no
+board, they still refuse with exit 1 rather than rendering an empty board:
+that is the only place `karr init` is the answer. In a clone whose board is on
+the remote, `karr init` refuses as well and points at `karr sync`, so it can no
+longer start a second, empty board beside the real one; `karr init --new-board`
+is the documented way through when an independent board there really is what
+you want.
+`KARR_NO_AUTO_FETCH=1` switches the fetch off where karr must not touch the
+network.
 
 ### File view (kanban-md interop)
 
@@ -289,6 +357,7 @@ remote board state too when a remote is configured. Prefer taking a
 
 ```bash
 karr set-refs superpowers/spec/1234.md draft ready
+karr set-refs superpowers/spec/1234.md < design.md    # multi-line payload
 karr get-refs superpowers/spec/1234.md
 ```
 
@@ -296,6 +365,11 @@ Stores and retrieves helper payloads in Git refs outside protected namespaces
 such as `refs/karr/*`, branches, and tags. Use this for shared planning blobs,
 agent scratch data, or similar workflow artifacts that should sync through Git
 without becoming task cards.
+
+The arguments after the ref are joined with a single space, so they are a
+one-line payload. A document goes in on stdin instead — with no content
+argument at all, `karr set-refs REF < file` stores the file verbatim and
+`karr get-refs REF > file` gives it back unchanged.
 
 ### Activity log
 
@@ -335,9 +409,19 @@ hour is finer than the data underneath it.
 ### Agent name
 
 ```bash
-karr agent-name                               # generate random two-word name
-karr pick --claim $(karr agent-name) --move in-progress
+NAME=$(karr agent-name)                       # mint once, reuse everywhere
+karr pick --claim "$NAME" --move in-progress
+karr handoff ID --claim "$NAME" --note "Implementation complete"
 ```
+
+Every `karr agent-name` call mints a **new** name and remembers it nowhere, so
+`--claim "$(karr agent-name)"` written a second time claims under one name and
+hands off under another â while the first claim is live the handoff is refused,
+and once it has expired it silently re-stamps the card with a name nobody holds.
+Capture the name once into a shell variable and pass that same variable to every
+later `--claim`, `--claimed-by` and `log --agent`. If it was never captured, read
+it back off the board (`karr show ID` â `Claimed:`, or `karr pick`'s own
+`(claimed by NAME)`) rather than minting a fresh one.
 
 ## Stored task format
 
@@ -351,9 +435,15 @@ created: 2026-03-12T10:00:00Z
 updated: 2026-03-12T10:00:00Z
 tags:
   - devops
+  - needs:other-repo#7
 
 Optional body with more detail.
 ```
+
+Cross-board dependencies ride in `tags` (`needs:BOARD#ID`,
+`escalated-from:BOARD#ID`) rather than in a frontmatter field of their own:
+kanban-md marshals a card from its own struct and would drop an unmodelled key
+the first time it writes, while `tags` is modelled on both sides.
 
 Tasks are stored under `refs/karr/tasks/*/data`. During command execution `karr`
 materializes the same Markdown shape into a temporary task directory, so this
@@ -439,7 +529,11 @@ another repository vendors `karr` instead of installing it locally.
 # 1. Publish a shared planning blob
 karr set-refs superpowers/spec/1234.md initial draft ready for review
 
-# 2. Read it back elsewhere
+# 2. Or pipe a whole document in - arguments are joined with a space and
+#    would flatten it into one line
+karr set-refs superpowers/spec/1234.md < design.md
+
+# 3. Read it back elsewhere
 karr get-refs superpowers/spec/1234.md
 ```
 

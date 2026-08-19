@@ -6,8 +6,8 @@ allowed-tools: Read, Edit, Write, Bash, Glob, Grep
 briefing:
   skills:
     - net-libssh-core
-    - perl-core
-    - karr
+    - getty-perl-core
+    - kanban-issues-karr-cli
 ---
 
 You are the `net-libssh-worker` for **Net::LibSSH**.
