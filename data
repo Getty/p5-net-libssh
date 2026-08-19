@@ -1,0 +1,16 @@
+---
+class: standard
+completed: 2026-08-19T23:17:57Z
+created: 2026-08-13T15:29:23Z
+id: 4
+priority: low
+started: 2026-08-19T23:00:11Z
+status: done
+tags:
+- test
+title: Test gaps in the channel and lifetime surface
+updated: 2026-08-19T23:17:57Z
+---
+
+Untested behaviour that callers depend on: read() with an explicit length and with is_stderr set; read(undef) returning empty because SvIV(undef) is 0 (documented trap, no test pins it); write + send_eof into a command reading stdin; eof after the remote closes; exit_status read before output is drained; the session refcount chain (create a channel, undef the session variable, keep using the channel); binary data through write/read; option(port) with a non-numeric value. t/01-session.t covers option keys and a refused connect; t/02-integration.t covers echo, a non-zero exit and sftp stat. Everything above is uncovered.
+Committed in eb94194. t/05-channel-io.t (26), t/06-exit-status-ordering.t (10), t/07-refcount-chain.t (1, TODO), +2 in t/01-session.t. Suite now 101 tests over 10 files, nothing skipped. Two documented claims turned out imprecise and are corrected in net-libssh-core (797a494). Still open, split off rather than dropped: a repetition loop for a channel()/sftp() leak, and an sftp()-side reproduction of #8.
