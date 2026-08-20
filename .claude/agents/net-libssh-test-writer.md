@@ -6,6 +6,7 @@ allowed-tools: Read, Edit, Write, Bash, Glob, Grep
 briefing:
   skills:
     - net-libssh-core
+    - perl-xs
     - getty-perl-core
     - kanban-issues-karr-cli
 ---

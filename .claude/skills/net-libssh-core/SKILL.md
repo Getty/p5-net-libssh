@@ -1,6 +1,6 @@
 ---
 name: net-libssh-core
-description: Load before editing Net::LibSSH — the XS surface over libssh, the sv_magicext object lifecycle that replaces DESTROY, the typemap, the session refcount chain, the dzil-only build path.
+description: Load before editing Net::LibSSH — what this distribution's three XS object types are, the generation counter that survives disconnect(), the API contracts Rex::LibSSH depends on, and the dzil-only build path.
 metadata:
   type: project
 ---
@@ -9,6 +9,12 @@ metadata:
 
 This skill is loaded into every `net-libssh-*` agent's context before its first
 turn. Do not duplicate its content in the agent body.
+
+**The general Perl/C boundary rules live in `perl-xs`** — magic-based objects and
+their free hooks, typemap syntax and its escaping trap, refcounting, `XSRETURN_UNDEF`,
+`ppport.h`, and how to test for crashes and leaks. This skill holds only what is
+specific to this distribution: which types exist, what libssh does that the general
+rules do not cover, and the behaviour callers depend on.
 
 ## What this distribution is
 
@@ -43,122 +49,70 @@ version module. All three must move together.
 
 `LibSSH.c` is generated from `LibSSH.xs` by xsubpp and is **not** committed.
 
-## Object lifecycle — `sv_magicext` + MGVTBL, never DESTROY
+## The three object types
 
-Objects are stored with `sv_magicext` under a **type-specific `MGVTBL`**. The C
-pointer lives in `mg->mg_ptr`; Perl's GC calls `svt_free` when the SV is
-collected.
+| XS type | Struct | Vtable | Wraps |
+|---|---|---|---|
+| `Net::LibSSH` | `NLSS_Session` | `Net__LibSSH_magic` | `ssh_session` |
+| `Net::LibSSH::Channel` | `NLSS_Channel` | `Net__LibSSH__Channel_magic` | `ssh_channel` |
+| `Net::LibSSH::SFTP` | `NLSS_SFTP` | `Net__LibSSH__SFTP_magic` | `sftp_session` |
 
-```c
-static int nlss_session_free(pTHX_ SV *sv, MAGIC *mg) {
-    NLSS_Session *self = (NLSS_Session *)(void *)mg->mg_ptr;
-    if (self->session) { ssh_disconnect(self->session); ssh_free(self->session); }
-    Safefree(self);
-    return 0;
-}
-static const MGVTBL Net__LibSSH_magic = { .svt_free = nlss_session_free };
-```
+Each has a pointer typedef (`typedef NLSS_Session *Net__LibSSH;`) so XS signatures
+need no `*`, one `typemap` entry pair, and a `svt_free` that tears the C object down.
+`new()`, `channel()` and `sftp()` only ever set `RETVAL` — the typemap blesses. Never
+bless by hand, and never add a `DESTROY` sub.
 
-Why this and not `sv_setref_pv` + a `DESTROY` method:
+Two decisions worth not relitigating:
 
-- **No `DESTROY` in XS.** `svt_free` fires even when `DESTROY` is overridden and
-  during global destruction.
-- **Strict type safety.** `mg_findext(..., &Net__LibSSH_magic)` matches only magic
-  carrying that *exact vtable address* — two types can never be confused, and a
-  hand-blessed hashref croaks at the boundary instead of segfaulting.
-- **Thread-safe cleanup** — the vtable is the right hook for `CLONE_PARAMS` if it
-  is ever needed.
-
-Never add a `DESTROY` sub, in XS or in the `.pm` files.
+- **The typemap spells every vtable pointer out literally** instead of using one
+  generic `T_MAGICEXT` entry with `&${type}_magic`. That expansion needs xsubpp's
+  `::` → `__` transformation, which exists from 3.60 on; this distribution supports
+  older toolchains, where the generic form emits `&Net::LibSSH_magic` and does not
+  compile.
+- **No `COUNTING_TYPE` / `DUPLICATING_TYPE` macro machinery.** Those generate
+  `make_T`/`get_T` helpers for C objects that can be refcounted or duplicated;
+  libssh has neither `ssh_session_up_ref` nor `ssh_session_dup`, and with three
+  types the macros cost more than they save.
 
 ## The session refcount chain — do not break it
 
-`NLSS_Channel` and `NLSS_SFTP` each hold `SV *session_sv`, set with
-`SvREFCNT_inc(ST(0))` at construction and released with `SvREFCNT_dec` in their
-`svt_free`.
+`NLSS_Channel` and `NLSS_SFTP` each hold `SV *session_sv`, incremented at
+construction and released in their `svt_free`, so the `ssh_session` outlives every
+object opened on it. **Any new object type that borrows the session takes the same
+reference** — on `SvRV(ST(0))`, the blessed referent, never on `ST(0)`.
 
-That increment is meant to guarantee the `ssh_session` outlives every channel
-opened on it. Any new object type that borrows the session must take the same
-reference.
+Through 0.002 the increment was on `ST(0)`, and only the scope-exit case survived;
+`undef $ssh` and `$ssh = anything_else` both segfaulted. `t/07-refcount-chain.t`
+covers all three ways of losing the variable, times both object types, each in a
+forked child.
 
-**Take the reference on `SvRV(ST(0))`, never on `ST(0)`.** `ST(0)` is the
-reference scalar — the `$ssh` variable's own SV; the referent is the blessed
-magic-bearing SV the typemap operates on and whose `svt_free` calls `ssh_free()`.
-Through 0.002 the increment was on `ST(0)`, which keeps the referent alive only
-while the RV still points at it:
+## disconnect() invalidates every child — the generation counter
 
-| what happens to the session variable | through 0.002 | now |
-|---|---|---|
-| goes out of scope | worked | works |
-| `undef $ssh` | **SIGSEGV** | works |
-| `$ssh = anything_else` | **SIGSEGV** | works |
+`ssh_disconnect()` walks `session->channels` and frees them inside libssh, so a
+pointer check cannot see it: `self->channel` stays non-NULL and points at freed
+memory. libssh offers nothing to ask, either — `ssh_get_status()` reports
+`SSH_CLOSED` for a spent session and for a never-connected one that saw a
+`disconnect()` alike.
 
-Dereferencing `ST(0)` there is safe: the typemap INPUT block runs before `CODE`
-and croaks unless `SvROK(_sv) && SvMAGICAL(SvRV(_sv))`, and OUTPUT overwrites
-`ST(0)` only afterwards. The free side needs nothing special — `SvREFCNT_dec` is
-symmetric with whatever was stored.
+So the session counts its disconnects, each child copies the count it was born
+under, and `nlss_session_stale()` compares. The rules that keep it correct:
 
-Note which case survived the bug: the one a test reaches for first. A refcount
-mistake here is invisible under scope-exit and fatal under `undef`.
-`t/07-refcount-chain.t` covers all three ways of losing the variable, times both
-object types, each in a forked child.
+- **`self->generation++` happens before `ssh_disconnect()`**, never after.
+- **A stale child's `svt_free` skips only the C teardown.** It still
+  `SvREFCNT_dec`s `session_sv` and still `Safefree`s its struct — skipping the body
+  wholesale trades the crash for a leak.
+- **`nlss_session_stale()` treats missing magic as stale.** A session SV that is not
+  the one we stored cannot be verified, and refusing is the safe answer on both the
+  method guard and the free path.
+- Since 0.003 the child stores `SvRV(ST(0))`, so the magic sits on `session_sv`
+  itself and `mg_findext` takes it directly — a further `SvRV()` there walks off the
+  object.
 
-## Struct and typedef layout
-
-Two layers of typedef, deliberately:
-
-```c
-typedef struct { ssh_session session; } NLSS_Session;   /* named, so Newxz has a type */
-typedef NLSS_Session *Net__LibSSH;                      /* pointer typedef for xsubpp */
-```
-
-`NLSS_Session` is named so `Newxz(RETVAL, 1, NLSS_Session)` has a concrete size.
-`Net__LibSSH` is the pointer typedef xsubpp uses in generated C — `Net__LibSSH
-self` there corresponds to `Net::LibSSH self` in the XS signature. Because these
-are *pointer* typedefs, XS signatures need no `*`.
-
-## Typemap — per-type entries, INPUT via `mg_findext`, OUTPUT via `sv_magicext`
-
-```
-Net::LibSSH          T_NET_LIBSSH
-Net::LibSSH::Channel T_NET_LIBSSH_CHANNEL
-Net::LibSSH::SFTP    T_NET_LIBSSH_SFTP
-```
-
-INPUT looks for magic with the matching vtable and croaks otherwise. OUTPUT
-builds the blessed magic SV. So `new()`, `channel()` and `sftp()` only ever set
-`RETVAL` — blessing is entirely the typemap's job. Do not bless by hand.
-
-### Escaping — the parse error that costs an hour
-
-xsubpp evaluates typemap INPUT/OUTPUT templates as **Perl double-quoted
-strings**. Every `"` that must reach the generated C has to be written `\"`; an
-unescaped one ends the Perl string early and the failure surfaces as an
-unrelated C syntax error.
-
-```
-# Wrong:    sv_magicext(newSVrv($arg, "Net::LibSSH"), ...);
-# Correct:  sv_magicext(newSVrv($arg, \"Net::LibSSH\"), ...);
-```
-
-### Why not the generic `T_MAGICEXT` with `&${type}_magic`
-
-`Crypt::OpenSSL3` uses one `T_MAGICEXT` entry and lets `${type}` expand with the
-`::` → `__` transformation. **That transformation only exists in xsubpp ≥ 3.60**
-(hence their `REQUIRE: 3.60`). On xsubpp 3.45 — Perl 5.36 — `${type}` is still
-`Net::LibSSH`, which is not a C identifier. The per-type entries here hardcode
-the vtable pointers instead and work on both.
-
-### Why not `T_PTROBJ`
-
-It appends `Ptr` to the class name (`Net__LibSSHPtr`) and uses
-`sv_setref_pv`/`INT2PTR`: no `svt_free`, no vtable type check. Don't.
-
-### Why not `COUNTING_TYPE` / `DUPLICATING_TYPE` macros
-
-Those generate `make_T`/`get_T` helpers for many types with refcounted or
-duplicable C objects. libssh has no `ssh_session_dup` and no `ssh_session_up_ref`,
-and with three types the macro machinery costs more than it saves.
+`NLSS_Session` is a three-state enum (`FRESH`, `CONNECTED`, `SPENT`) rather than a
+flag because only the `CONNECTED → SPENT` transition is terminal: measured on libssh
+0.10.6, `disconnect()` on a never-connected session leaves it fully connectable,
+while a session that was connected cannot be reconnected. `Newxz` gives `FRESH` for
+free.
 
 ## The one place that touches a libssh internal
 
@@ -170,7 +124,7 @@ crash for a leak (~1.6 kB per dropped object). libssh declares
 error rather than silently — but it is the only thing here that depends on a
 libssh internal, and it is what to check first when a new libssh fails to build.
 
-## XS house rules
+## XS conventions in this file
 
 - **`#define NEED_mg_findext` before `ppport.h`** — supplies `mg_findext` on
   Perl < 5.14.
@@ -186,11 +140,8 @@ libssh internal, and it is what to check first when a new libssh fails to build.
   plausible wrong answer, not a segfault, so a missing guard on a new method is
   invisible in testing. `close()` is the exception — it must stay idempotent for
   `svt_free`.
-- **`XSRETURN_UNDEF` bypasses the OUTPUT section.** That is how `channel()`,
-  `sftp()` and `stat()` return undef instead of an object. It also means
-  `RETVAL` must not have been allocated yet when you take that branch —
-  otherwise the allocation leaks. Check the C resource is freed on that path
-  (`ssh_channel_free` / `sftp_free`) before returning.
+- **`channel()`, `sftp()` and `stat()` return undef via `XSRETURN_UNDEF`**, and free
+  the C resource they had already created before taking that branch.
 
 ## API contracts a caller depends on
 

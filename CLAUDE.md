@@ -69,8 +69,11 @@ yourself — principle and lane are in `.claude/rules/net-libssh-rules.md`.
 
 The agents carry their skills via `briefing.skills` (see `.claude/agents/`); the
 main agent delegates rather than loading them. Skill sources live under
-`.claude/skills/` — `net-libssh-core` holds the XS binding architecture
-(`sv_magicext`/MGVTBL lifecycle, the per-type typemap and its escaping rules,
-the session refcount chain, the API contracts); `getty-perl-core`,
+`.claude/skills/`. The XS knowledge is split in two: `perl-xs` holds the general
+Perl/C boundary rules (magic-based objects and their free hooks, typemap syntax
+and its escaping trap, refcounting, `ppport.h`, testing for crashes and leaks),
+while `net-libssh-core` holds what is specific to this distribution — the three
+object types, the generation counter that makes `disconnect()` survivable, and
+the API contracts `Rex::LibSSH` depends on. `perl-xs`, `getty-perl-core`,
 `getty-perl-release-author-getty` and `kanban-issues-karr-cli` are hardlinked
-shared skills.
+shared skills; `net-libssh-core` is owned here.
