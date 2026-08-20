@@ -14,14 +14,38 @@
    Internal structs (named so Newxz has a type to size)
    ==================================================== */
 
+/* Where the ssh_session is in its one-way life. libssh 0.10.6 cannot
+   reconnect a session it has disconnected -- ssh_connect() sits out the whole
+   timeout -- but measured on the same libssh, disconnect() on a session that
+   was never connected leaves it fully connectable. Only the CONNECTED ->
+   SPENT transition is therefore terminal, which is why this is three states
+   and not a flag. Newxz gives FRESH for free.
+   libssh has nothing to answer this with: ssh_get_status() reports SSH_CLOSED
+   for both a spent session and a never-connected one that saw a disconnect(),
+   and ssh_is_connected() is already 0 by the time connect() would ask. */
+typedef enum {
+    NLSS_SESSION_FRESH = 0,
+    NLSS_SESSION_CONNECTED,
+    NLSS_SESSION_SPENT
+} NLSS_SessionState;
+
 /* generation / session_generation: ssh_disconnect() frees every ssh_channel
    the session owns from inside libssh, so a channel or sftp session that
    outlives a disconnect() holds a non-NULL pointer into freed memory. The
    session counts its disconnects; each child copies the count it was born
    under and compares. See nlss_session_stale(). */
 typedef struct {
-    ssh_session  session;
-    unsigned int generation;
+    ssh_session        session;
+    unsigned int       generation;
+    NLSS_SessionState  state;
+    /* The one message this binding raises itself; everything else in error()
+       comes from libssh. Set when connect() refuses a spent session, where
+       ssh_connect() is never called and ssh_get_error() would still hold what
+       stood there before the disconnect (measured: nothing). A string
+       literal, so there is nothing to free, and nothing clears it either --
+       a spent session stays spent, and that is the reason every later call
+       on it fails too. */
+    const char        *own_error;
 } NLSS_Session;
 
 typedef struct {
@@ -235,7 +259,20 @@ int
 connect(self)
     Net::LibSSH self
   CODE:
-    RETVAL = (ssh_connect(self->session) == SSH_OK) ? 1 : 0;
+    if (self->state == NLSS_SESSION_SPENT) {
+        /* Refuse without calling libssh: ssh_connect() on a disconnected
+           session waits out the full timeout and then reports "Timeout
+           connecting to <host>", which names the wrong problem. Still 0 and
+           still no croak -- connect()'s contract is 1 or 0 with the message
+           on error(), and Rex::LibSSH relies on it. */
+        self->own_error = "session was disconnected and cannot be reconnected";
+        RETVAL = 0;
+    } else if (ssh_connect(self->session) == SSH_OK) {
+        self->state = NLSS_SESSION_CONNECTED;
+        RETVAL = 1;
+    } else {
+        RETVAL = 0;
+    }
   OUTPUT:
     RETVAL
 
@@ -243,6 +280,11 @@ void
 disconnect(self)
     Net::LibSSH self
   CODE:
+    /* Only a session that actually got connected is spent by this: measured
+       on libssh 0.10.6, disconnect() on a never-connected session leaves it
+       connectable, and marking it would refuse a call that works. */
+    if (self->state == NLSS_SESSION_CONNECTED)
+        self->state = NLSS_SESSION_SPENT;
     /* Bump before disconnecting: ssh_disconnect() frees every channel the
        session owns, so every channel and sftp session opened on it has to be
        stale by the time that memory goes away. */
@@ -253,7 +295,8 @@ SV *
 error(self)
     Net::LibSSH self
   CODE:
-    const char *msg = ssh_get_error(self->session);
+    const char *msg = self->own_error ? self->own_error
+                                      : ssh_get_error(self->session);
     RETVAL = (msg && *msg) ? newSVpv(msg, 0) : undef;
   OUTPUT:
     RETVAL

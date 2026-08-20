@@ -1,6 +1,11 @@
 Revision history for Net-LibSSH
 
 {{$NEXT}}
+  - connect() on a session that has already been disconnected now returns 0
+    immediately, with error() saying the session was disconnected and cannot
+    be reconnected — instead of waiting out the connection timeout for
+    libssh's misleading "Timeout connecting to ..."; disconnect() on a
+    session that was never connected still leaves it connectable
   - Channel methods (exec, read, write, send_eof, eof, exit_status) now
     croak instead of operating on a closed channel; close() stays idempotent
   - Fix segfault when a channel or SFTP session is used after the session
