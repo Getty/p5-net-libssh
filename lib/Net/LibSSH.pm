@@ -41,8 +41,10 @@ L<Net::LibSSH> is a Perl XS binding for L<libssh|https://www.libssh.org/>.
 Unlike L<Net::SSH2> (which wraps libssh2) and L<Net::OpenSSH> (which wraps
 the system C<ssh> binary), this module links directly against B<libssh> — a
 separate, actively maintained C library. The key difference for automation
-use cases: file operations via L<Net::LibSSH::Channel> use SSH exec channels
-and require no SFTP subsystem on the remote host.
+use cases: what this module exposes are exec channels via
+L<Net::LibSSH::Channel>, not a file transfer API. File operations are built
+on top of those channels — as L<Rex::LibSSH> does — and therefore need no
+SFTP subsystem on the remote host.
 
 SFTP is supported as an optional feature via L</sftp>: it returns C<undef>
 gracefully when the remote server has no SFTP subsystem, rather than

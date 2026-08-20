@@ -4,10 +4,12 @@ XS Perl binding for libssh — SSH library without SFTP dependency.
 
 ## What It Is
 
-Net::LibSSH wraps the C libssh library (NOT libssh2). Key difference from
-Net::SSH2: file operations use SSH exec channels, not SFTP. The SFTP support
-is optional and returns `undef` gracefully when the subsystem is absent — that
-is what `Rex::LibSSH` uses downstream to detect SFTP availability.
+Net::LibSSH wraps the C libssh library (NOT libssh2). It exposes exec channels,
+not a file transfer API — there is no put/get here. Key difference from
+Net::SSH2: file operations are built on top of those exec channels, not on
+SFTP. The SFTP support is optional and returns `undef` gracefully when the
+subsystem is absent — that is what `Rex::LibSSH` uses downstream to detect
+SFTP availability.
 
 ## Module Structure
 

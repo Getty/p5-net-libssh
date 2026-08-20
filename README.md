@@ -2,7 +2,7 @@
 
 Perl XS binding for [libssh](https://www.libssh.org/) — SSH without SFTP dependency.
 
-Unlike [Net::SSH2](https://metacpan.org/pod/Net::SSH2) (wraps libssh2) and [Net::OpenSSH](https://metacpan.org/pod/Net::OpenSSH) (wraps the system `ssh` binary), this module links directly against **libssh** — a separate, actively maintained C library. File operations use SSH exec channels and require **no SFTP subsystem** on the remote host.
+Unlike [Net::SSH2](https://metacpan.org/pod/Net::SSH2) (wraps libssh2) and [Net::OpenSSH](https://metacpan.org/pod/Net::OpenSSH) (wraps the system `ssh` binary), this module links directly against **libssh** — a separate, actively maintained C library. It exposes exec channels, not a file transfer API: file operations are built on top of them (as `Rex::LibSSH` does) and require **no SFTP subsystem** on the remote host.
 
 This makes it the right choice for minimal containers, embedded systems, and Kubernetes nodes (where SFTP is often absent).
 
