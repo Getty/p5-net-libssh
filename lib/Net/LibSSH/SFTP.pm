@@ -20,7 +20,21 @@ connection. Instances are created via L<Net::LibSSH/sftp>.
 
 If the remote server has no SFTP subsystem, L<Net::LibSSH/sftp> returns
 C<undef> instead of throwing — callers should always check the return value
-before using the object.
+before using the object. The same C<undef>, not a croak, is what
+L<Net::LibSSH/sftp> also returns when called again on a session that has
+already disconnected — see L<Net::LibSSH/disconnect>.
+
+Like L<Net::LibSSH::Channel>, an SFTP session keeps the session it was
+opened on alive on its own: letting the originating C<$ssh> variable go out
+of scope, assigning C<undef> to it, or reassigning it to something else
+does not invalidate it. That guarantee is about the Perl variable, not
+about the session's connection — it does not protect an SFTP session from
+C<< $ssh->disconnect >>. Once the originating session has disconnected,
+L<stat|/"stat($path)"> croaks with C<"Net::LibSSH::SFTP::stat: session was
+disconnected"> instead of returning a result. Simply dropping the SFTP
+object after disconnect — letting it go out of scope, or assigning
+C<undef> to it — is safe; there is no C<close> method that needs to be
+called first.
 
 =head1 METHODS
 
@@ -34,6 +48,9 @@ before using the object.
 
 Returns a hashref describing the remote path, or C<undef> if the path does
 not exist or cannot be accessed.
+
+Croaks if the session this SFTP object belongs to has been disconnected —
+see L<Net::LibSSH/disconnect>.
 
 Hashref keys:
 
