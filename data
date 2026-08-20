@@ -1,0 +1,24 @@
+---
+class: standard
+completed: 2026-08-20T00:25:09Z
+created: 2026-08-19T23:57:32Z
+id: 10
+priority: low
+started: 2026-08-20T00:13:25Z
+status: done
+tags:
+- xs
+- docs
+- libssh
+title: 'disconnect() is terminal: libssh 0.10.6 cannot reconnect a session'
+updated: 2026-08-20T00:25:09Z
+---
+
+Measured while fixing #9, on libssh 0.10.6: ssh_connect() after ssh_disconnect() on the same ssh_session returns "Timeout connecting to 127.0.0.1". Reproducible with or without a channel ever having been opened, and independent of the #9 generation-counter change -- it is libssh behaviour, not ours.
+
+The POD offers connect() and disconnect() as a pair without saying the session object is spent afterwards, which invites reading them as a cycle. A caller wanting a second connection has to build a fresh Net::LibSSH object.
+
+Options: (a) document disconnect() as terminal and leave the code alone; (b) make it terminal in the binding -- have disconnect() mark the session and have connect() croak on a spent one rather than letting the caller wait out a timeout; (c) find out whether a supported libssh reconnect sequence exists (ssh_free + ssh_new is the obvious one, which is just (a) with extra steps).
+
+(a) is being written into the POD now as part of the #9 follow-up. This ticket is about whether (b) is worth it -- a timeout is a poor error message for a state the binding could detect for free.
+Fixed in 9551f08, POD in the follow-up. Option (b), but returning 0 rather than croaking -- the ticket's croak suggestion would have broken connect()'s 1-or-0 contract. Measured: 5.005s -> 0.000s. Three states, not a flag: disconnect() on a never-connected session leaves it connectable, verified.
