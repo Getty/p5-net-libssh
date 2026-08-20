@@ -83,7 +83,9 @@ read the absence of a croak here as validation.
 
   $ssh->connect or die $ssh->error;
 
-Connect to the host. Returns 1 on success, 0 on failure.
+Connect to the host. Returns 1 on success, 0 on failure, and never dies —
+including when called on a session that has already been connected and
+disconnected, see L</disconnect>.
 
 =head2 disconnect
 
@@ -102,19 +104,28 @@ C<< $ssh->channel >> and C<< $ssh->sftp >> called on a session that has
 already disconnected return C<undef> rather than croaking — the same
 graceful-failure contract they already have for any other failure to open.
 
-The session itself is not reusable after C<disconnect>: measured against
-libssh 0.10.6, calling L</connect> again on it does not reconnect, it times
-out (C<"Timeout connecting to ...">), regardless of whether a channel was
-ever opened on the session. That is a limitation of the underlying
-library, not of this module, but treat C<disconnect>/C<connect> as
-one-way — not a cycle you can repeat on the same session.
+The session itself is not reusable once it has actually been connected and
+then disconnected: calling L</connect> again on it returns C<0>
+immediately, with C<error()> reporting
+C<"session was disconnected and cannot be reconnected">. This module
+refuses the call itself, without asking libssh — measured against libssh
+0.10.6, C<ssh_connect()> on such a session does not fail fast, it sits out
+the whole C<timeout> option and only then reports a misleading
+C<"Timeout connecting to ...">. Treat C<disconnect>/C<connect> as one-way —
+not a cycle you can repeat on the same session.
+
+Calling C<disconnect> on a session that was never successfully connected
+does not spend it: a later L</connect> on it still works normally. Only a
+connect/disconnect pair is terminal, not the mere act of disconnecting.
 
 =head2 error
 
   my $msg = $ssh->error;
 
 Return the last error message from libssh, or C<undef> — not the empty
-string — when libssh has nothing to report.
+string — when libssh has nothing to report. One message is this module's
+own rather than libssh's — the refusal described in L</disconnect> — and
+takes precedence over whatever libssh has to say.
 
 =head2 auth_password($password)
 

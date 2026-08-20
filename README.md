@@ -22,6 +22,7 @@ $ssh->auth_agent or die "auth failed: " . $ssh->error;
 my $ch = $ssh->channel;
 $ch->exec("uname -r");
 print "Kernel: ", $ch->read;
+print "Exit: ", $ch->exit_status, "\n";   # before close() -- see the POD
 
 # SFTP is optional — returns undef if not available on the remote
 if (my $sftp = $ssh->sftp) {
@@ -41,11 +42,11 @@ if (my $sftp = $ssh->sftp) {
 
 ## Installation
 
-Requires `libssh` development headers (`libssh-dev` on Debian/Ubuntu, `libssh-devel` on RHEL/Fedora). [Alien::libssh](https://metacpan.org/pod/Alien::libssh) will build it from source if a system library is not found.
-
 ```
 cpanm Net::LibSSH
 ```
+
+[Alien::libssh](https://metacpan.org/pod/Alien::libssh) supplies the C library: it uses a system `libssh` when one is installed (`libssh-dev` on Debian/Ubuntu, `libssh-devel` on RHEL/Fedora) and builds one from source otherwise. A C compiler is needed either way.
 
 ## See Also
 
