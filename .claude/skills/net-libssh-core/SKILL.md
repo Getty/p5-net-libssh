@@ -22,9 +22,10 @@ An XS binding to **libssh** (`https://www.libssh.org/`) — *not* libssh2, which
 what `Net::SSH2` wraps, and not the system `ssh` binary, which is what
 `Net::OpenSSH` drives. The C library comes from `Alien::libssh`.
 
-The product claim: **file and command operations run over SSH exec channels and
-need no SFTP subsystem on the remote host.** SFTP exists as an optional extra and
-degrades to `undef` rather than dying. If a code path in here ever makes SFTP
+The product claim: **commands run over SSH exec channels, and file operations are
+built on those channels rather than on an SFTP subsystem.** There is no file transfer
+API in here — no put, no get, no scp; `Rex::LibSSH` builds its own on top of `exec`.
+SFTP exists as an optional extra and degrades to `undef` rather than dying. If a code path in here ever makes SFTP
 mandatory, the distribution has lost the thing it exists for.
 
 Downstream consumer: `Rex::LibSSH` (`~/dev/perl/getty-rex-libssh`), which reimplements
@@ -153,8 +154,12 @@ These are behaviour, not style. Changing one is a breaking change for
 - **`stat()` returns `undef`** for a missing or inaccessible path — never a
   half-populated hashref.
 - **`connect()` / `auth_*()` return 1 or 0 and do not die.** The message goes
-  through `error()`, which returns `undef` — not the empty string — when libssh
-  has nothing to say. A refused port must return 0, not croak.
+  through `error()`, which returns `undef` — not the empty string — when there is
+  nothing to say. A refused port must return 0, not croak. `error()` prefers
+  `self->own_error` over `ssh_get_error()`, so one message is this binding's own
+  rather than libssh's. **`own_error` is never cleared** — harmless only because
+  the single case that sets it is terminal. A second own message on a
+  non-terminal path has to reset it, or it masks every libssh error from then on.
 - **`auth_agent()` silently falls back to `ssh_userauth_publickey_auto`** when
   the agent is missing or refuses. A return of 1 is not evidence that an agent
   was used.
@@ -215,9 +220,13 @@ These are behaviour, not style. Changing one is a breaking change for
   libssh's; `close()` on a stale channel is a no-op, not a croak. The
   `svt_free` paths skip only the C teardown and still release `session_sv` and
   the struct.
-- **The session is not reusable after `disconnect()`.** On libssh 0.10.6 a
-  subsequent `connect()` times out, independent of any channel. Treat
-  `disconnect()` as terminal for the session object.
+- **A connected session is spent by `disconnect()`, and `connect()` afterwards
+  returns 0 immediately.** Since 0.003 the SPENT state is checked before libssh is
+  called at all, and `error()` reads `session was disconnected and cannot be
+  reconnected`. Left to libssh, `ssh_connect()` waits out the full timeout and then
+  reports `Timeout connecting to <host>`, which names the wrong problem. Note what
+  did *not* become terminal: `disconnect()` on a session that was never connected
+  leaves it fully connectable — only the `CONNECTED → SPENT` transition spends it.
 - **A channel runs one command per lifetime.** `exec` is called once; a second
   command needs a new `$ssh->channel`.
 - **Not fork-safe, not thread-safe.** One session per process, as the POD says.
