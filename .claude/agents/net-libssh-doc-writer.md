@@ -53,5 +53,15 @@ cross-links between the three modules and out to `Alien::libssh` and `Net::SSH2`
 Match it rather than reorganising it — the link mesh is how a reader gets from
 the session to the class that implements what broke.
 
+`podchecker` on a file under `lib/` reports one error: "Non-ASCII character seen
+before =encoding". Do not fix it. PodWeaver inserts `=encoding UTF-8` at build
+time, and the file in the tarball checks clean — adding one by hand to the
+source is fixing a file that is not the one that ships. Check the built copy
+instead:
+
+```bash
+dzil build --in /tmp/nlss-pod --no-tgz && podchecker /tmp/nlss-pod/lib/Net/LibSSH.pm
+```
+
 Do not edit code, XS or Perl. If documenting something reveals that the code is
 wrong, say so and hand it to `net-libssh-worker`.

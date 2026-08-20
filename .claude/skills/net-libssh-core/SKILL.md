@@ -160,6 +160,16 @@ Those generate `make_T`/`get_T` helpers for many types with refcounted or
 duplicable C objects. libssh has no `ssh_session_dup` and no `ssh_session_up_ref`,
 and with three types the macro machinery costs more than it saves.
 
+## The one place that touches a libssh internal
+
+`nlss_sftp_free` sets `self->sftp->channel = NULL` before `sftp_free()` when the
+session was disconnected. `ssh_disconnect()` frees the sftp session's channel but
+not the struct around it, so skipping `sftp_free()` entirely would trade the
+crash for a leak (~1.6 kB per dropped object). libssh declares
+`struct sftp_session_struct` in its public `sftp.h`, so this breaks as a compile
+error rather than silently — but it is the only thing here that depends on a
+libssh internal, and it is what to check first when a new libssh fails to build.
+
 ## XS house rules
 
 - **`#define NEED_mg_findext` before `ppport.h`** — supplies `mg_findext` on
@@ -244,14 +254,19 @@ These are behaviour, not style. Changing one is a breaking change for
   loudly instead of returning -1, which a caller cannot tell apart from "the
   process has not exited yet". `close()` itself is idempotent and deliberately
   unguarded, because `svt_free` walks the same path when the SV is collected.
-- **`disconnect()` invalidates every live channel and SFTP session — and
-  currently crashes.** `ssh_disconnect()` walks `session->channels` and frees
-  them inside libssh, so every `NLSS_Channel` keeps a dangling `ssh_channel`.
-  `nlss_channel_check_open()` does not catch this: the pointer is non-NULL, it
-  just points at freed memory. Using the channel segfaults, and so does merely
-  dropping it, because `nlss_channel_free` calls `ssh_channel_send_eof` on the
-  freed channel. karr #9; unfixed, and it needs a design decision rather than a
-  guard.
+- **`disconnect()` invalidates every live channel and SFTP session.**
+  `ssh_disconnect()` walks `session->channels` and frees them inside libssh, so
+  a pointer check cannot see it — `self->channel` stays non-NULL and points at
+  freed memory. The session therefore counts its disconnects, children copy the
+  count they were born under, and `nlss_session_stale()` compares.
+  Stale methods croak `"…: session was disconnected"`, a deliberately separate
+  message from `"channel is closed"` so a caller can tell its own teardown from
+  libssh's; `close()` on a stale channel is a no-op, not a croak. The
+  `svt_free` paths skip only the C teardown and still release `session_sv` and
+  the struct.
+- **The session is not reusable after `disconnect()`.** On libssh 0.10.6 a
+  subsequent `connect()` times out, independent of any channel. Treat
+  `disconnect()` as terminal for the session object.
 - **A channel runs one command per lifetime.** `exec` is called once; a second
   command needs a new `$ssh->channel`.
 - **Not fork-safe, not thread-safe.** One session per process, as the POD says.
