@@ -1,6 +1,8 @@
 Revision history for Net-LibSSH
 
 {{$NEXT}}
+  - SFTP integration test now stats /etc/passwd instead of /etc/hostname, so
+    it passes on FreeBSD smokers where /etc/hostname does not exist (GH #1)
   - connect() on a session that has already been disconnected now returns 0
     immediately, with error() saying the session was disconnected and cannot
     be reconnected — instead of waiting out the connection timeout for

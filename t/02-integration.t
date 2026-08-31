@@ -52,7 +52,9 @@ SKIP: {
     my $sftp = $ssh->sftp;
     ok defined $sftp, 'sftp() returns object when subsystem available';
 
-    my $attr = $sftp->stat('/etc/hostname');
+    # /etc/passwd exists on every Unix; /etc/hostname does not exist on
+    # FreeBSD (hostname lives in /etc/rc.conf there) — GH #1 / karr #11.
+    my $attr = $sftp->stat('/etc/passwd');
     ok defined $attr, 'stat() returns hashref for existing path';
     ok $attr->{size} > 0, 'stat() size is positive';
 }
