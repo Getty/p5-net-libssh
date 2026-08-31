@@ -1,0 +1,30 @@
+---
+class: standard
+completed: 2026-08-31T15:35:38Z
+created: 2026-08-23T18:49:19Z
+id: 11
+priority: medium
+started: 2026-08-31T15:35:38Z
+status: done
+tags:
+- github
+- portability
+title: 'GH #1: stat() liefert auf FreeBSD keinen Hashref'
+updated: 2026-08-31T15:35:48Z
+---
+
+Gemeldet 2026-04-05 von eserte auf seinen FreeBSD-Smokern, GitHub-Issue #1.
+Das Board dieses Repos war bis jetzt leer, das Issue war nirgends erfasst.
+
+  Failed test "stat() returns hashref for existing path"  (t/02-integration.t:56)
+  Use of uninitialized value in numeric gt (>)            (t/02-integration.t:57)
+  Failed test "stat() size is positive"
+
+Der zweite Fehler ist die Folge des ersten: ohne Hashref ist die Groesse undef.
+Zu klaeren, ob libssh dort einen anderen Rueckgabeweg nimmt oder ob der
+SFTP-Pfad auf FreeBSD gar nicht erst zustande kommt -- der Test ist ein
+Integrationstest und braucht einen erreichbaren Server.
+
+Vier Monate offen, unbeantwortet.
+
+Ursache: Test stat'te /etc/hostname (auf FreeBSD nicht vorhanden). Fix: /etc/passwd. dzil test PASS (140). GH#1 damit lokal erledigt.
