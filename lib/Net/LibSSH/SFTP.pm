@@ -1,7 +1,7 @@
 # ABSTRACT: Optional SFTP session for Net::LibSSH
 
 package Net::LibSSH::SFTP;
-our $VERSION = '0.003';
+our $VERSION = '0.004';
 use strict;
 use warnings;
 
