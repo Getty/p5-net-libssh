@@ -1,6 +1,6 @@
 Revision history for Net-LibSSH
 
-{{$NEXT}}
+0.003     2026-09-01 00:06:26Z
   - SFTP integration test now stats /etc/passwd instead of /etc/hostname, so
     it passes on FreeBSD smokers where /etc/hostname does not exist (GH #1)
   - connect() on a session that has already been disconnected now returns 0
