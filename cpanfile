@@ -1,7 +1,7 @@
-requires 'Alien::libssh' => '0.001';
+requires 'Alien::libssh' => '0.002';
 
 on configure => sub {
-  requires 'Alien::libssh'    => '0.001';
+  requires 'Alien::libssh'    => '0.002';
   requires 'ExtUtils::MakeMaker' => '7.00';
 };
 
