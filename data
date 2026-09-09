@@ -1,0 +1,25 @@
+---
+claimed_at: 2026-09-09T06:01:04Z
+claimed_by: p5-net-libssh
+class: standard
+completed: 2026-09-09T06:01:04Z
+created: 2026-09-08T19:08:03Z
+id: 12
+priority: high
+started: 2026-09-08T19:19:34Z
+status: done
+title: 'Security: connect() verifiziert Server-Host-Key nicht (CPANSec-Report, CWE-322)'
+updated: 2026-09-09T06:01:04Z
+---
+
+Privater Report (James via CPANSec) zu Net-LibSSH 0.003 (und Rex-LibSSH 0.003). 14-Tage-Disclosure ab 2026-09-08.
+
+Verifiziert 2026-09-08: connect() in LibSSH.xs ruft nur ssh_connect(); SSH_OPTIONS_STRICTHOSTKEYCHECK/KNOWNHOSTS werden gesetzt, aber ssh_session_is_known_server() wird nie aufgerufen. Live-Repro gegen t/lib/TestSSHD mit strict_hostkeycheck=1 + leerem knownhosts: connect, auth_publickey und exec erfolgreich, known_hosts bleibt leer.
+
+Fix: nach ssh_connect()==SSH_OK ssh_session_is_known_server() auswerten. OK -> weiter. NOT_FOUND/UNKNOWN -> im Strict-Modus (libssh-Default 1) ablehnen, disconnect, own_error setzen, connect() gibt 0 zurueck; bei strict=0 akzeptieren. CHANGED/OTHER -> Verhalten bei strict=0 ist Maintainer-Entscheidung. Regressionstests trusted/unknown/changed (TestSSHD muss host_key.pub exponieren). Bestehende Tests nutzen knownhosts => /dev/null und brauchen dann strict_hostkeycheck => 0 oder einen echten known_hosts-Eintrag. Release 0.004 vor Rex::LibSSH-Fix noetig; kein Release ohne Freigabe.
+
+Entscheidung strict=0: keine Pruefung, auch nicht bei CHANGED/OTHER (POD von option() sagt seit 0.001 'set to 0 to disable host key verification'; Rex::LibSSH dokumentiert 'checking disabled by default'). strict=1: alles ausser SSH_KNOWN_HOSTS_OK wird abgelehnt. Harness bekommt known_hosts/host_key_pub, Integrationstests laufen ueber echtes known_hosts. Worker laeuft.
+
+Fix committed als 29f509a: connect() prueft nach ssh_connect() via ssh_session_is_known_server(), strict (Default) lehnt alles ausser OK ab, strict=0 prueft gar nicht. Harness schreibt echtes known_hosts, t/10-hostkey.t (26 Tests). Release-Audit: bereit, dzil test 168 Tests gruen, t/02/03/04/10 real gelaufen. Changes-Bullet unter {{$NEXT}}. Release 0.004 wartet auf Freigabe des Maintainers.
+
+2026-09-09 06:00 Review verifiziert (Lane-B-Batch, unabhaengig): Fix 29f509a real geprueft. connect() wertet nach ssh_connect()==SSH_OK nun ssh_session_is_known_server() aus (LibSSH.xs ~Z.296-311), strict (Default) lehnt alles ausser SSH_KNOWN_HOSTS_OK ab (return 0, error() gesetzt, Session spent), strict=0 prueft nicht. t/10-hostkey.t ist git-getrackt (kein dzil-GatherDir-Hazard), keine untracked Dateien. dzil test GRUEN: Result PASS, 13 Dateien/166 Tests, XS gegen Alien::libssh 0.002 gebaut (v0.004), t/02/03/04/05/10 real gegen TestSSHD gelaufen. Changes-SECURITY-Bullet unter {{NEXT}} vorhanden. Designentscheidungen (strict=0 keine Pruefung auch bei CHANGED/OTHER; strict=1 nur OK) im Ticket aufgeloest -> nicht strittig. OFFEN bleibt ausschliesslich das Maintainer-Gate: Release 0.004 (CPANSec 14-Tage-Disclosure ab 2026-09-08, ~2026-09-22) und danach der Rex::LibSSH-Fix -- beides Maintainer-Sache, nicht Teil dieses Fix-Tickets. -> done.
