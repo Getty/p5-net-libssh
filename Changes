@@ -1,6 +1,6 @@
 Revision history for Net-LibSSH
 
-{{$NEXT}}
+0.004     2026-09-20 18:38:02Z
   - SECURITY: connect() now verifies the server host key against known_hosts
     (CWE-322, reported privately via CPANSec). Previously
     strict_hostkeycheck was passed to libssh but ssh_session_is_known_server()
