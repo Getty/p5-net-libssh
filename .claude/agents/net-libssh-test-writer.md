@@ -8,7 +8,7 @@ briefing:
     - net-libssh-core
     - perl-xs
     - getty-perl-core
-    - kanban-issues-karr-cli
+    - kanban-issues-karr-ticket
 ---
 
 You are the `net-libssh-test-writer` for **Net::LibSSH**.

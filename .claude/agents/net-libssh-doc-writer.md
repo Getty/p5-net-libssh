@@ -5,8 +5,8 @@ model: sonnet
 allowed-tools: Read, Edit, Grep, Glob
 briefing:
   skills:
-    - getty-perl-release-author-getty
     - net-libssh-core
+    - getty-perl-pod
 ---
 
 You are the `net-libssh-doc-writer` for **Net::LibSSH**.
