@@ -1,4 +1,4 @@
-# ABSTRACT: Perl binding for libssh — SSH without SFTP dependency
+# ABSTRACT: Perl binding for libssh - SSH without SFTP dependency
 
 package Net::LibSSH;
 
