@@ -1,0 +1,26 @@
+---
+class: standard
+created: 2026-10-05T05:15:29Z
+id: 13
+priority: medium
+status: backlog
+tags:
+- feature
+- api
+title: 'Interactive device dialogs: auth none, shell channel with PTY, timed reads,
+  algorithm options'
+updated: 2026-10-05T05:15:29Z
+---
+
+Found while building SICK-Target-CiscoSB (certificate deployment onto Cisco Small Business switches, Sx300 family). Those devices let the SSH layer in without authentication and then run their own "User Name:" / "Password:" dialog on an interactive shell. Net::LibSSH 0.004 (libssh 0.11.5) could not be used as the transport; the target drives the system ssh binary instead, behind a small transport interface (open / write / read($seconds) / close / is_open / error) so a LibSSH transport can be added later.
+
+What is missing:
+
+1. Authentication method "none" (ssh_userauth_none). Only auth_password, auth_publickey and auth_agent exist.
+2. An interactive shell on a channel: request_pty / request_shell (optionally window size). A channel can only exec; the switch hangs forever on exec.
+3. Reading from a channel with a timeout or non-blocking (ssh_channel_read_timeout / ssh_channel_read_nonblocking, ssh_channel_poll), plus writes to the shell channel.
+4. Options for algorithms: key exchange, host key, ciphers, MACs (SSH_OPTIONS_KEY_EXCHANGE, SSH_OPTIONS_HOSTKEYS, SSH_OPTIONS_CIPHERS_C_S / _S_C, SSH_OPTIONS_HMAC_C_S / _S_C). Old firmware offers only diffie-hellman-group-exchange-sha1 / group1-sha1 with ssh-rsa host keys; connect currently fails with "kex error : no match for method kex algos" and option() rejects these settings. Note the linked libssh must have the legacy algorithms compiled in.
+
+Done looks like: a test that logs in to a fake server (or a recorded dialog) using auth none + pty + shell, exchanges prompts with timed reads, and a documented way to enable legacy algorithms explicitly (off by default).
+
+Consumer waiting for it: SICK::Target::CiscoSB::Transport (repo sick-target-ciscosb), which would gain a LibSSH transport next to the ssh-binary one.
