@@ -1,0 +1,31 @@
+---
+class: standard
+created: 2026-10-06T19:47:21Z
+id: 14
+priority: medium
+status: backlog
+tags:
+- bug
+- xs
+- threads
+- review-2026-10-06
+title: Creating any thread while a Net::LibSSH object is alive segfaults (no CLONE_SKIP,
+  no svt_dup)
+updated: 2026-10-06T19:47:21Z
+---
+
+The three magic vtables carry only `svt_free` (`LibSSH.xs:99`, `LibSSH.xs:141`, `LibSSH.xs:163`) and none of the packages defines `CLONE_SKIP`. When an ithread is created perl clones every live SV including its ext magic; the clone points at the same `NLSS_Session` / `NLSS_Channel` / `NLSS_SFTP` struct, and both copies run `svt_free` - `ssh_disconnect` + `ssh_free` + `Safefree` twice.
+
+Reproduced with the installed 0.004 on this (thread-multi) perl; the thread never touches the object:
+
+    perl -Mthreads -MNet::LibSSH -e '$|=1; my $s = Net::LibSSH->new; print "created\n"; threads->create(sub { 1 })->join; print "after join\n"; undef $s; print "after undef\n"'
+    created
+    after join
+    Segmentation fault            (exit 139)
+
+The POD says the module "is not thread-safe" (`lib/Net/LibSSH.pm:59`), but that reads as "do not share a session"; here an unrelated worker thread anywhere in the process is enough, and for a connected session the cloned destructor additionally sends a disconnect on the parent's socket.
+
+Done when: `Net::LibSSH`, `Net::LibSSH::Channel` and `Net::LibSSH::SFTP` each define `sub CLONE_SKIP { 1 }` (the clone becomes undef in the new thread), a test guarded by `$Config{useithreads}` runs the one-liner above, and the POD note says what actually happens in a thread.
+
+---
+Fleet review 2026-10-06 · kind: bug · confidence: verified
