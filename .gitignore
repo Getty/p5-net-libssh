@@ -19,6 +19,9 @@
 .claude/*.local.*
 .claude/local/
 
+# Claude Code worktrees (claude --worktree / isolated agents) -- never commit
+/.claude/worktrees/
+
 # Credentials & session state (never track)
 .claude/.credentials.json
 .claude/statsig/
