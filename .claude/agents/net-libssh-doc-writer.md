@@ -6,6 +6,7 @@ disallowedTools: Write, NotebookEdit, Bash
 briefing:
   skills:
     - net-libssh-core
+    - net-libssh-hazards
     - getty-perl-pod
 ---
 

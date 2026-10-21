@@ -5,6 +5,7 @@ model: inherit
 briefing:
   skills:
     - net-libssh-core
+    - net-libssh-hazards
     - perl-xs
     - getty-perl-core
     - kanban-issues-karr-ticket

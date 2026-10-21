@@ -8,6 +8,7 @@ briefing:
     - getty-perl-release-author-getty
     - getty-perl-core
     - net-libssh-core
+    - net-libssh-hazards
     - kanban-issues-karr-ticket
 ---
 
