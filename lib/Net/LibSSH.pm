@@ -59,6 +59,14 @@ messages and L<< option()|/"option($key, $value)" >> for turning that off.
 B<Note:> This module is not thread-safe and does not support fork. Use one
 connection per process.
 
+Objects are not shared with threads. When a thread is created
+(L<threads>), every L<Net::LibSSH>, L<Net::LibSSH::Channel> and
+L<Net::LibSSH::SFTP> object alive in the parent is skipped by the clone
+(C<CLONE_SKIP>): in the new thread the variable holds a plain, unblessed
+reference to an undefined scalar, so calling a method on it dies. The
+parent keeps its connection untouched. Open a new session inside the
+thread if it needs one.
+
 =head1 METHODS
 
 =head2 new

@@ -233,6 +233,16 @@ MODULE = Net::LibSSH    PACKAGE = Net::LibSSH
 
 PROTOTYPES: DISABLE
 
+# CLONE_SKIP: an ithread would clone the ext magic with the same struct
+# pointer and both copies would run svt_free. Defined here, not in the .pm
+# files: Channel.pm and SFTP.pm are POD-only and never loaded.
+int
+CLONE_SKIP(...)
+  CODE:
+    RETVAL = 1;
+  OUTPUT:
+    RETVAL
+
 Net::LibSSH
 new(class)
     SV *class
@@ -437,6 +447,13 @@ sftp(self)
 MODULE = Net::LibSSH    PACKAGE = Net::LibSSH::Channel
 
 int
+CLONE_SKIP(...)
+  CODE:
+    RETVAL = 1;
+  OUTPUT:
+    RETVAL
+
+int
 exec(self, cmd)
     Net::LibSSH::Channel  self
     const char           *cmd
@@ -531,6 +548,13 @@ close(self)
 
 
 MODULE = Net::LibSSH    PACKAGE = Net::LibSSH::SFTP
+
+int
+CLONE_SKIP(...)
+  CODE:
+    RETVAL = 1;
+  OUTPUT:
+    RETVAL
 
 SV *
 stat(self, path)

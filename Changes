@@ -1,6 +1,9 @@
 Revision history for Net-LibSSH
 
 {{$NEXT}}
+  - Fix segfault when a thread is created while a session, channel or SFTP
+    object is alive: the objects are no longer cloned into the new thread
+    and are not usable there, so the parent's connection is freed only once
 
 0.004     2026-09-20 18:38:02Z
   - SECURITY: connect() now verifies the server host key against known_hosts
