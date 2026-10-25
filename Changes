@@ -4,6 +4,14 @@ Revision history for Net-LibSSH
   - Fix segfault when a thread is created while a session, channel or SFTP
     object is alive: the objects are no longer cloned into the new thread
     and are not usable there, so the parent's connection is freed only once
+  - Add auth_none() for servers that admit a session without credentials
+  - Add Channel request_pty() and request_shell() for an interactive
+    shell, and read_timeout() to read from it with a timeout or without
+    waiting: it returns data, '' on a timeout and undef at end of file,
+    and croaks on a failed connection
+  - option() accepts kex, hostkeys, ciphers_c_s, ciphers_s_c, hmac_c_s and
+    hmac_s_c, so legacy algorithms can be enabled explicitly for old
+    devices; unset, the proposal is libssh's default, as before
 
 0.004     2026-09-20 18:38:02Z
   - SECURITY: connect() now verifies the server host key against known_hosts

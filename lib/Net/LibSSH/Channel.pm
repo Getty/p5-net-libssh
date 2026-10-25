@@ -40,7 +40,8 @@ no-op, not an error, and so is simply dropping the channel (letting it go
 out of scope, or assigning C<undef> to it) — teardown that has already
 happened is not a failure.
 
-A channel runs one command per lifetime. After C<exec> completes you can
+A channel runs one command per lifetime; an interactive shell
+(L</request_pty>, L</request_shell>) counts as that one command. After C<exec> completes you can
 read stdout and stderr independently, then retrieve the exit status. Call
 C<close> (or let the object go out of scope) to free the underlying libssh
 channel. C<close> is idempotent; every I<other> channel method croaks once
@@ -84,12 +85,96 @@ Returns a string (possibly empty). Croaks if the channel has already been
 closed (see L</close>), or if its session has been disconnected (see
 L<Net::LibSSH/disconnect>).
 
+=head2 request_pty([$cols, $rows [, $term]])
+
+  $ch->request_pty or die "no pty";               # xterm, 80x24
+  $ch->request_pty(132, 50, 'vt100') or die "no pty";
+
+Ask the server for a pseudo-terminal on this channel; call it before
+L</request_shell>. Without arguments the terminal is C<xterm>, 80 columns
+by 24 rows (libssh's own default). C<$cols> and C<$rows> go together and
+must be integers from 1 to 65535; C<$term> defaults to C<xterm> and must
+not be empty. Returns 1 on success, 0 if the server refuses.
+
+Unlike the numeric options of L<Net::LibSSH/option>, bad arguments are not
+silently turned into 0: a lone size, a zero or non-numeric size, or an
+empty C<$term> croaks.
+
+Croaks if the channel has already been closed (see L</close>), or if its
+session has been disconnected (see L<Net::LibSSH/disconnect>).
+
+=head2 request_shell
+
+  $ch->request_shell or die "no shell";
+
+Start the user's interactive shell on the channel, in place of L</exec>.
+Returns 1 on success, 0 on failure. A shell is the channel's one command,
+like an C<exec>: a channel runs one command or one shell in its lifetime,
+and a second request on it is the server's to refuse. Talk to the shell
+with L</write> and L</read_timeout>; L</read> would block until the shell
+ends. A device that runs its own dialog needs
+L<Net::LibSSH/auth_none> first.
+
+  $ssh->auth_none or die $ssh->error;
+  my $ch = $ssh->channel;
+  $ch->request_pty and $ch->request_shell or die "no shell";
+  my $prompt = $ch->read_timeout(5);     # "User Name:"
+  $ch->write("admin\r");
+
+Croaks if the channel has already been closed (see L</close>), or if its
+session has been disconnected (see L<Net::LibSSH/disconnect>).
+
+=head2 read_timeout($seconds [, $length [, $is_stderr]])
+
+  my $data = $ch->read_timeout(2);
+  if    (!defined $data) { print "the remote side is done\n" }
+  elsif ($data eq '')    { print "nothing yet\n" }
+  else                   { print "got: $data" }
+
+Wait up to C<$seconds> (a number, fractions allowed) for output and return
+as soon as some has arrived, at most C<$length> bytes of it (default 4096;
+must be at least 1). A true C<$is_stderr> reads stderr instead of stdout.
+C<0> does not wait: it takes what has already arrived, once.
+
+The three outcomes are told apart, which L</read> cannot do:
+
+=over 4
+
+=item a non-empty string
+
+Data. Call again for more.
+
+=item the empty string
+
+Nothing arrived within C<$seconds>; the channel is still open and may yet
+produce output.
+
+=item C<undef>
+
+End of file: the remote side closed or sent EOF and everything it sent has
+been read. Every further call returns C<undef> at once.
+
+=back
+
+A failing connection (the peer vanished, a protocol error) croaks with
+libssh's message, so it cannot be mistaken for either an empty timeout or
+the end of the stream. A negative or non-numeric C<$seconds>, or a
+C<$length> below 1, croaks too; a negative timeout would otherwise mean
+"wait forever" to libssh.
+
+This is also the non-blocking read: C<< read_timeout(0) >>. The timeout is
+in seconds like the C<timeout> option, whereas libssh counts milliseconds.
+
+Croaks if the channel has already been closed (see L</close>), or if its
+session has been disconnected (see L<Net::LibSSH/disconnect>).
+
 =head2 write($data)
 
   my $n = $ch->write("input\n");
 
 Write C<$data> to the channel's standard input. Returns the number of
-bytes written, or a negative value on error.
+bytes written, or a negative value on error. On a shell channel this is
+what you type.
 
 Croaks if the channel has already been closed (see L</close>), or if its
 session has been disconnected (see L<Net::LibSSH/disconnect>).

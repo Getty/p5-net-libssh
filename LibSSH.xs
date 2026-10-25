@@ -285,6 +285,18 @@ option(self, key, value)
         rc = ssh_options_set(self->session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &v);
         if (rc == SSH_OK)
             self->hostkey_check_disabled = !v;
+    } else if (strcmp(key, "kex") == 0) {
+        rc = ssh_options_set(self->session, SSH_OPTIONS_KEY_EXCHANGE, SvPV_nolen(value));
+    } else if (strcmp(key, "hostkeys") == 0) {
+        rc = ssh_options_set(self->session, SSH_OPTIONS_HOSTKEYS, SvPV_nolen(value));
+    } else if (strcmp(key, "ciphers_c_s") == 0) {
+        rc = ssh_options_set(self->session, SSH_OPTIONS_CIPHERS_C_S, SvPV_nolen(value));
+    } else if (strcmp(key, "ciphers_s_c") == 0) {
+        rc = ssh_options_set(self->session, SSH_OPTIONS_CIPHERS_S_C, SvPV_nolen(value));
+    } else if (strcmp(key, "hmac_c_s") == 0) {
+        rc = ssh_options_set(self->session, SSH_OPTIONS_HMAC_C_S, SvPV_nolen(value));
+    } else if (strcmp(key, "hmac_s_c") == 0) {
+        rc = ssh_options_set(self->session, SSH_OPTIONS_HMAC_S_C, SvPV_nolen(value));
     } else {
         Perl_croak(aTHX_ "Net::LibSSH::option: unknown option '%s'", key);
     }
@@ -376,6 +388,18 @@ auth_password(self, password)
   CODE:
     RETVAL = (ssh_userauth_password(self->session, NULL, password)
               == SSH_AUTH_SUCCESS) ? 1 : 0;
+  OUTPUT:
+    RETVAL
+
+int
+auth_none(self)
+    Net::LibSSH self
+  CODE:
+    /* Only SSH_AUTH_SUCCESS is a yes: DENIED, PARTIAL, ERROR and AGAIN all
+       mean the session is not authenticated yet, and the reason is on
+       error(). Devices that run their own login dialog on the shell let the
+       SSH layer in this way. */
+    RETVAL = (ssh_userauth_none(self->session, NULL) == SSH_AUTH_SUCCESS) ? 1 : 0;
   OUTPUT:
     RETVAL
 
@@ -485,6 +509,92 @@ read(self, ...)
         } else {
             RETVAL = newSVpvn(buf, n);
             Safefree(buf);
+        }
+    }
+  OUTPUT:
+    RETVAL
+
+int
+request_pty(self, ...)
+    Net::LibSSH::Channel self
+  CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::request_pty");
+    if (items == 1) {
+        RETVAL = (ssh_channel_request_pty(self->channel) == SSH_OK) ? 1 : 0;
+    } else {
+        /* Columns and rows only make sense together; a lone one is a usage
+           error, not a request for libssh's 80x24. Validated here because
+           SvIV of garbage is a silent 0, and a 0x0 terminal is no terminal. */
+        if (items != 3 && items != 4)
+            Perl_croak(aTHX_ "Usage: Net::LibSSH::Channel::request_pty"
+                             "(self [, cols, rows [, term]])");
+        if (!looks_like_number(ST(1)) || !looks_like_number(ST(2))
+            || SvIV(ST(1)) < 1 || SvIV(ST(1)) > 65535
+            || SvIV(ST(2)) < 1 || SvIV(ST(2)) > 65535)
+            Perl_croak(aTHX_ "Net::LibSSH::Channel::request_pty: "
+                             "cols and rows must be integers from 1 to 65535");
+        const char *term = "xterm";
+        if (items == 4) {
+            term = SvPV_nolen(ST(3));
+            if (!*term)
+                Perl_croak(aTHX_ "Net::LibSSH::Channel::request_pty: "
+                                 "term must not be empty");
+        }
+        RETVAL = (ssh_channel_request_pty_size(self->channel, term,
+                      (int) SvIV(ST(1)), (int) SvIV(ST(2))) == SSH_OK) ? 1 : 0;
+    }
+  OUTPUT:
+    RETVAL
+
+int
+request_shell(self)
+    Net::LibSSH::Channel self
+  CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::request_shell");
+    RETVAL = (ssh_channel_request_shell(self->channel) == SSH_OK) ? 1 : 0;
+  OUTPUT:
+    RETVAL
+
+SV *
+read_timeout(self, seconds, ...)
+    Net::LibSSH::Channel  self
+    SV                   *seconds
+  CODE:
+    nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::read_timeout");
+    /* Unlike read(), this one has to say three different things -- data,
+       nothing yet, and nothing ever again -- so its arguments are validated
+       instead of passing through SvNV/SvIV's silent 0. A negative timeout
+       would be libssh's "wait forever", which is never what a typo meant. */
+    if (!looks_like_number(seconds) || !(SvNV(seconds) >= 0)
+        || SvNV(seconds) > 2000000)
+        Perl_croak(aTHX_ "Net::LibSSH::Channel::read_timeout: "
+                         "seconds must be a number from 0 to 2000000");
+    int is_stderr = 0;
+    int len       = 4096;
+    if (items >= 3) len       = SvIV(ST(2));
+    if (items >= 4) is_stderr = SvTRUE(ST(3));
+    if (len < 1)
+        Perl_croak(aTHX_ "Net::LibSSH::Channel::read_timeout: "
+                         "length must be at least 1");
+    {
+        char *buf;
+        int   n;
+        Newx(buf, len, char);
+        n = ssh_channel_read_timeout(self->channel, buf, len, is_stderr,
+                                     (int) (SvNV(seconds) * 1000.0));
+        if (n > 0) {
+            RETVAL = newSVpvn(buf, n);
+            Safefree(buf);
+        } else if (n == 0 || n == SSH_AGAIN) {
+            /* libssh answers 0 for a timeout and for end of file alike; the
+               channel itself knows which. */
+            Safefree(buf);
+            RETVAL = (n == 0 && ssh_channel_is_eof(self->channel))
+                     ? undef : newSVpvs("");
+        } else {
+            Safefree(buf);
+            nlss_croak_error(aTHX_ ssh_channel_get_session(self->channel),
+                             "Net::LibSSH::Channel::read_timeout");
         }
     }
   OUTPUT:

@@ -83,7 +83,9 @@ Creates a new session object.
 
 Set a session option before connecting. Supported keys: C<host>, C<port>,
 C<user>, C<knownhosts>, C<timeout>, C<compression>, C<log_verbosity>,
-C<strict_hostkeycheck>.
+C<strict_hostkeycheck>, and the algorithm keys C<kex>, C<hostkeys>,
+C<ciphers_c_s>, C<ciphers_s_c>, C<hmac_c_s> and C<hmac_s_c>, described
+under L</Legacy algorithms>.
 
 C<strict_hostkeycheck> controls whether L</connect> verifies the server's
 host key against C<knownhosts>, mirroring libssh's own default: leaving
@@ -104,6 +106,53 @@ uniformly. For example, C<< port => 'nonsense' >> croaks (libssh rejects
 port C<0>), while C<< timeout => 'nonsense' >> or
 C<< log_verbosity => 'nonsense' >> are silently accepted as C<0>. Do not
 read the absence of a croak here as validation.
+
+=head3 Legacy algorithms
+
+  # An old switch that only speaks SHA-1 Diffie-Hellman, ssh-rsa and CBC:
+  $ssh->option(kex         => 'diffie-hellman-group14-sha1');
+  $ssh->option(hostkeys    => 'ssh-rsa');
+  $ssh->option(ciphers_c_s => 'aes128-cbc');
+  $ssh->option(ciphers_s_c => 'aes128-cbc');
+  $ssh->option(hmac_c_s    => 'hmac-sha1');
+  $ssh->option(hmac_s_c    => 'hmac-sha1');
+
+By default none of these keys is touched: the session proposes libssh's
+own modern algorithm list, and a server that offers none of them is
+refused with C<connect> returning 0 and C<error> reading, for example,
+C<"kex error : no match for method kex algos: server [...], client [...]">.
+Old network firmware is typically in that position. Setting a key replaces
+libssh's list for that purpose with exactly the comma-separated list you
+give; nothing is enabled behind your back, and a weak algorithm is only
+ever in use because the caller wrote its name down.
+
+A value starting with C<+> appends to libssh's default list instead
+(C<< kex => '+diffie-hellman-group14-sha1' >>), C<-> removes from it and
+C<^> moves to the front. The prefix forms are libssh's, not this
+module's; check them against the libssh you link.
+
+The six keys are, in libssh's terms: C<kex> the key exchange, C<hostkeys>
+the host key algorithms the client accepts, C<ciphers_c_s> and
+C<ciphers_s_c> the ciphers client-to-server and server-to-client, and
+C<hmac_c_s> and C<hmac_s_c> the MACs in the same two directions. There is
+deliberately no key that sets both directions at once; a legacy device
+needs both set, so set both. A MAC is only consulted for a cipher that is
+not authenticated by itself (C<chacha20-poly1305> and the GCM ciphers are),
+so a C<hmac_*> setting changes nothing until the cipher is a CBC or CTR one.
+
+An algorithm the linked libssh does not know is rejected right here:
+C<option> croaks. That is also what happens when libssh was built without
+the legacy algorithm you ask for, so a successful C<option> call means the
+algorithm is available in this build — not that the server will take it.
+Which algorithms a libssh has compiled in depends on how it was built;
+libssh 0.12.2, as supplied by L<Alien::libssh>, has all of the SHA-1 key
+exchanges, C<ssh-rsa>, and the CBC and 3DES ciphers used in the examples
+above. Pointing the key exchange list at an algorithm that the server also
+lacks is not an error here either — it surfaces as C<connect> returning 0.
+
+Enabling these algorithms makes the session as weak as the weakest one you
+listed. Do it only for a device you cannot update, and only in the one
+session that talks to it.
 
 =head2 connect
 
@@ -211,6 +260,20 @@ rejects the server's key.
 =head2 auth_publickey($privkey_path)
 
   $ssh->auth_publickey('/root/.ssh/id_ed25519') or die $ssh->error;
+
+=head2 auth_none
+
+  $ssh->auth_none or die $ssh->error;
+
+Authenticate with the SSH method C<none>: no credentials at all. Returns 1
+when the server lets the session in, 0 otherwise, and never dies. Some
+network devices work this way: the SSH layer admits everyone and the device
+then runs its own login dialog ("User Name:", "Password:") on an
+interactive shell, see L<Net::LibSSH::Channel/request_shell>. An ordinary
+server such as OpenSSH answers 0 and C<error> says why; the session stays
+connected and a real method can follow. A true return is a statement about
+the SSH layer only — it says nothing about whether the device will accept
+you afterwards.
 
 =head2 auth_agent
 
