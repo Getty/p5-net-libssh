@@ -19,6 +19,9 @@
       "kanban-issues-karr-coordination@karr",
       "kanban-issues-karr-ticket@karr",
       "perl-xs@getty"
+    ],
+    "bundles": [
+      "getty-cpan-dist@getty"
     ]
   },
   "targets": [
