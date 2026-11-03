@@ -28,5 +28,11 @@ jobs:
       - name: perl -V
         run: perl -V
       - name: Install system packages
-        run: apt-get update && apt-get install -y --no-install-recommends libssh-dev pkg-config
+        # openssh-server and openssh-client give t/02 to t/10 a real sshd; sshd
+        # wants its privilege-separation directory, which the package leaves to
+        # the service unit.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends libssh-dev pkg-config openssh-server openssh-client
+          mkdir -p /run/sshd
       - uses: Getty/p5-dist-zilla-pluginbundle-author-getty/.github/actions/dzil-test@v1

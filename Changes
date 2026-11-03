@@ -11,7 +11,9 @@ Revision history for Net-LibSSH
     and croaks on a failed connection
   - option() accepts kex, hostkeys, ciphers_c_s, ciphers_s_c, hmac_c_s and
     hmac_s_c, so legacy algorithms can be enabled explicitly for old
-    devices; unset, the proposal is libssh's default, as before
+    devices; unset, the proposal is libssh's default, as before. The "+",
+    "-" and "^" prefixes on those values are libssh's and need libssh 0.11.0
+    or later
 
 0.004     2026-09-20 18:38:02Z
   - SECURITY: connect() now verifies the server host key against known_hosts

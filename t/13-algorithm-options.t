@@ -17,10 +17,28 @@ use Net::LibSSH;
 # The fake server is built from the same libssh the module links, so a libssh
 # built without an algorithm makes the server refuse to start, and this file
 # fails instead of silently testing less.
+#
+# The "+", "-" and "^" prefixes belong to libssh, not to this module, and
+# libssh only knows them from 0.11.0 on. The cases that use them ask the
+# linked libssh whether it accepts a prefixed list and are skipped, with that
+# reason, where it does not; every other case runs unchanged.
 
 my $probe = FakeSSHD->start;
 plan skip_all => 'no C compiler: cannot build t/lib/fake-sshd.c' unless $probe;
 undef $probe;
+
+# Does the linked libssh take a "+", "-" or "^" prefix on an algorithm list?
+# Older ones read the sign as part of an algorithm name and refuse the list
+# ("no allowed algorithm for method"). Asked once, of libssh itself.
+my $PREFIX_SUPPORT;
+sub libssh_knows_prefixes {
+    return $PREFIX_SUPPORT if defined $PREFIX_SUPPORT;
+    my $ssh = Net::LibSSH->new;
+    return $PREFIX_SUPPORT = eval {
+        $ssh->option(kex => '+diffie-hellman-group14-sha1');
+        1;
+    } ? 1 : 0;
+}
 
 sub session_for {
     my ($srv, %opt) = @_;
@@ -71,6 +89,7 @@ my @cases = (
         server => [ '--kex=diffie-hellman-group14-sha1' ],
         opt    => { kex => '+diffie-hellman-group14-sha1' },
         no_match => qr/kex algos/,
+        needs_prefix => 1,
     },
     {
         name   => 'host key',
@@ -94,6 +113,8 @@ my @cases = (
 
 for my $case (@cases) {
     subtest $case->{name} => sub {
+        plan skip_all => 'the linked libssh does not know the "+", "-" and "^" prefixes (libssh 0.11.0 and later do)'
+            if $case->{needs_prefix} && !libssh_knows_prefixes();
         my ($ok, $err) = eval { attempt($case->{server}) };
         is $@, '', 'connecting with no options does not croak';
         ok !$ok, 'the default proposal does not reach a legacy-only server';
@@ -135,6 +156,28 @@ subtest 'hmac: each option is applied to its own direction' => sub {
         attempt(\@server, hmac_c_s => 'hmac-sha2-256', hmac_s_c => 'hmac-sha2-256');
     };
     ok $ok, 'both set to the MAC the server offers: connects' or diag $err;
+};
+
+# --- the prefix forms, on every algorithm list ---
+
+subtest 'prefixes "+", "-" and "^" on the algorithm lists' => sub {
+    plan skip_all => 'the linked libssh does not know the "+", "-" and "^" prefixes (libssh 0.11.0 and later do)'
+        unless libssh_knows_prefixes();
+    my $ssh = Net::LibSSH->new;
+    my %known = (
+        kex         => 'diffie-hellman-group14-sha1',
+        hostkeys    => 'ssh-ed25519',
+        ciphers_c_s => 'aes256-ctr',
+        ciphers_s_c => 'aes256-ctr',
+        hmac_c_s    => 'hmac-sha2-256',
+        hmac_s_c    => 'hmac-sha2-256',
+    );
+    for my $key (sort keys %known) {
+        for my $prefix ('+', '-', '^') {
+            eval { $ssh->option($key => $prefix . $known{$key}) };
+            is $@, '', $key . ' accepts ' . $prefix . $known{$key};
+        }
+    }
 };
 
 # --- off by default; libssh vets the values ---

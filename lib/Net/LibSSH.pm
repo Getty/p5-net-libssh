@@ -129,7 +129,9 @@ ever in use because the caller wrote its name down.
 A value starting with C<+> appends to libssh's default list instead
 (C<< kex => '+diffie-hellman-group14-sha1' >>), C<-> removes from it and
 C<^> moves to the front. The prefix forms are libssh's, not this
-module's; check them against the libssh you link.
+module's, and libssh has them from 0.11.0 on, for these six keys; an older
+libssh refuses such a value with C<no allowed algorithm for method>, and
+there the value names the complete list.
 
 The six keys are, in libssh's terms: C<kex> the key exchange, C<hostkeys>
 the host key algorithms the client accepts, C<ciphers_c_s> and
