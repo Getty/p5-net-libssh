@@ -41,7 +41,7 @@ out of scope, or assigning C<undef> to it) — teardown that has already
 happened is not a failure.
 
 A channel runs one command per lifetime; an interactive shell
-(L</request_pty>, L</request_shell>) counts as that one command. After C<exec> completes you can
+(L</"request_pty([$cols, $rows [, $term]])">, L</request_shell>) counts as that one command. After C<exec> completes you can
 read stdout and stderr independently, then retrieve the exit status. Call
 C<close> (or let the object go out of scope) to free the underlying libssh
 channel. C<close> is idempotent; every I<other> channel method croaks once
@@ -107,11 +107,11 @@ session has been disconnected (see L<Net::LibSSH/disconnect>).
 
   $ch->request_shell or die "no shell";
 
-Start the user's interactive shell on the channel, in place of L</exec>.
+Start the user's interactive shell on the channel, in place of L</"exec($command)">.
 Returns 1 on success, 0 on failure. A shell is the channel's one command,
 like an C<exec>: a channel runs one command or one shell in its lifetime,
 and a second request on it is the server's to refuse. Talk to the shell
-with L</write> and L</read_timeout>; L</read> would block until the shell
+with L</"write($data)"> and L</"read_timeout($seconds [, $length [, $is_stderr]])">; L</"read([$length [, $is_stderr]])"> would block until the shell
 ends. A device that runs its own dialog needs
 L<Net::LibSSH/auth_none> first.
 
@@ -136,7 +136,7 @@ as soon as some has arrived, at most C<$length> bytes of it (default 4096;
 must be at least 1). A true C<$is_stderr> reads stderr instead of stdout.
 C<0> does not wait: it takes what has already arrived, once.
 
-The three outcomes are told apart, which L</read> cannot do:
+The three outcomes are told apart, which L</"read([$length [, $is_stderr]])"> cannot do:
 
 =over 4
 
