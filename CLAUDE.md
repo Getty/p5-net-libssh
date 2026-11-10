@@ -76,5 +76,5 @@ and its escaping trap, refcounting, `ppport.h`, testing for crashes and leaks),
 while `net-libssh-core` holds what is specific to this distribution — the three
 object types, the generation counter that makes `disconnect()` survivable, and
 the API contracts `Rex::LibSSH` depends on. `perl-xs`, `getty-perl-core`,
-`getty-perl-release-author-getty` and `kanban-issues-karr-coordination` are hardlinked
-shared skills; `net-libssh-core` is owned here.
+`getty-perl-release-author-getty` and the `kanban-issues-karr-*` skills are installed by
+skilletor; `net-libssh-core` and `net-libssh-hazards` are owned here.
