@@ -14,6 +14,8 @@ Revision history for Net-LibSSH
     devices; unset, the proposal is libssh's default, as before. The "+",
     "-" and "^" prefixes on those values are libssh's and need libssh 0.11.0
     or later
+  - Requires Alien::libssh 0.003: a libssh built from source is 0.12.2 with
+    the upstream security fixes, and a system libssh counts from 0.9.0 on
 
 0.004     2026-09-20 18:38:02Z
   - SECURITY: connect() now verifies the server host key against known_hosts
