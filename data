@@ -1,0 +1,14 @@
+---
+class: standard
+created: 2026-11-25T20:24:45Z
+id: 17
+priority: low
+status: backlog
+tags:
+- skill
+- docs
+title: 'net-libssh-hazards: exit_status section still describes libssh 0.10.6 ssh_channel_get_exit_status'
+updated: 2026-11-25T20:24:45Z
+---
+
+Skill net-libssh-hazards, section "exit_status() returns -1 until the remote process has exited", explains the drain-first advice via libssh 0.10.6 ssh_channel_get_exit_status() pumping the packet loop. Since k15 the XS calls ssh_channel_get_exit_state() on libssh >= 0.11 (the release builds 0.12.2) and only falls back to the old call below that. The section also misses what k15/k16 measured: without option(timeout => N) the call waits for the exit status, -1 comes back early only once a session timeout runs out, and a signal-killed process gives -1 (t/14-exit-status-unknown.t). Align the skill text with LibSSH.xs and the Channel POD after k16; skill text only.
