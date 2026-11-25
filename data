@@ -1,0 +1,40 @@
+---
+claimed_at: 2026-11-25T20:27:14Z
+claimed_by: p5-net-libssh
+class: standard
+completed: 2026-11-25T20:27:18Z
+created: 2026-11-25T20:11:00Z
+id: 15
+priority: medium
+started: 2026-11-25T20:27:18Z
+status: done
+tags:
+- xs
+- libssh-compat
+title: 'exit_status(): use ssh_channel_get_exit_state on libssh >= 0.11'
+updated: 2026-11-25T20:27:18Z
+---
+
+The dzil build against Alien::libssh 0.003 (share build, libssh 0.12.2) warns at LibSSH.xs:636:
+
+  warning: ssh_channel_get_exit_status is deprecated [-Wdeprecated-declarations]
+
+libssh 0.11.0 deprecated ssh_channel_get_exit_status() in favour of ssh_channel_get_exit_state(channel, &exit_code, &exit_signal, &core_dumped). In 0.12.2 the old function is a thin wrapper: it calls get_exit_state(channel, &code, NULL, NULL) and returns SSH_ERROR (-1) for any rc != SSH_OK, SSH_AGAIN included. So the behaviour today is fine; the risk is a future libssh removing the old symbol.
+
+A plain swap is not possible: Alien::libssh accepts a system libssh >= 0.9.0 (alienfile minimum_version), and ssh_channel_get_exit_state only exists since 0.11.0 (symbol version node LIBSSH_4_10_0, alongside sftp_home_directory and ssh_channel_request_pty_size_modes, which the libssh CHANGELOG lists as new in 0.11.0).
+
+Done when:
+- exit_status() calls ssh_channel_get_exit_state under #if LIBSSH_VERSION_INT >= SSH_VERSION_INT(0,11,0), and the old call stays as the #else branch
+- every rc other than SSH_OK still yields -1 (POD contract: -1 until the remote process has exited), signal/core_dumped passed as NULL, no new leak
+- dzil build compiles without the deprecation warning; dzil test is green with the integration suite actually running (not skip_all)
+- no new API (an exit_signal method would be a separate card)
+
+2026-11-25 20:14 Baseline reproduced: dzil build --in <scratch> + perl Makefile.PL && make -> only warning is LibSSH.xs:636 ssh_channel_get_exit_status deprecated [-Wdeprecated-declarations]. Verified: 0.12.2 ssh_channel_get_exit_status is exactly get_exit_state(ch,&code,NULL,NULL), rc!=SSH_OK -> SSH_ERROR; exit.code is initialised to (uint32_t)-1 so a signal-only exit also yields -1. System libssh 0.11.5 exports ssh_channel_get_exit_state at node LIBSSH_4_10_0. 0.10.6 header (Alien-libssh 0.002 tarball) and 0.9.0 header (upstream tag) both lack get_exit_state, do not deprecate get_exit_status, and define LIBSSH_VERSION_INT/SSH_VERSION_INT (0.9.0 inline in libssh.h, 0.10.x via libssh_version.h).
+
+2026-11-25 20:21 Implemented: exit_status() under #if LIBSSH_VERSION_INT >= SSH_VERSION_INT(0, 11, 0) calls ssh_channel_get_exit_state(ch, &code, NULL, NULL) == SSH_OK ? (int) code : -1; #else keeps ssh_channel_get_exit_status(). Guard nlss_channel_check_open unchanged in front. #else compile-checked: generated LibSSH.c compiled -c with -Werror=deprecated-declarations against libssh 0.10.6 headers (Alien-libssh 0.002 tarball, libssh_version.h configured by hand) and 0.9.0 headers (upstream tag, GitLab mirror): both rc=0, no diagnostics, preprocessor shows MINOR 10 / 9, objdump shows the XSUB calling ssh_channel_get_exit_status. Same compile against 0.12.2: patched rc=0, baseline LibSSH.c fails at LibSSH.xs:636 (control). Not run against an old libssh, compile only. Regression gap found: no test pinned -1 on an open channel; a ': 0' mutant passed the whole suite. Added t/14-exit-status-unknown.t (staged with git add, not committed, so Git::GatherDir ships it): signal death (kill -9 $$ -> exit-signal, SSH_OK with code (uint32_t)-1 -> -1) and not-yet-exited under a 1s session timeout (SSH_AGAIN -> -1, then the real code 9 once exited). Passes on patched and baseline .so; fails on a ': 0' mutant (tests 7, 9) and a '(code & 0xff)' mutant (test 4). For k16 (doc-writer): (1) the POD's 'Measured against libssh 0.10.6: ssh_channel_get_exit_status pumps the packet loop' names the function only the <0.11 build still calls; get_exit_state pumps the same way (ssh_handle_packets_termination). (2) libssh sets no default session timeout (opts.timeout 0 = infinite, 0.10.6 and 0.12.2), so without option(timeout => N) exit_status() blocks until the process exits; -1 'until exited' only comes back once a timeout is set. (3) a process killed by a signal gives -1 permanently, which the POD does not say.
+
+2026-11-25 20:21 Done: LibSSH.xs exit_status() uses ssh_channel_get_exit_state on libssh >= 0.11.0, old call as #else; new t/14-exit-status-unknown.t (staged) pins both -1 paths. Verified: dzil test green, 17 files / 248 tests, compile log has no warning lines at all (grep warning|deprecat empty); every sshd file ran (t/02-t/14 planned 10/22/11/26/10/6/17/17/26/7/56/10/9 tests, none skip_all); only t/release-changes_has_content.t skipped (release-only). #else branch compile-checked against 0.10.6 and 0.9.0 headers, not run. Tree uncommitted: M LibSSH.xs, A t/14-exit-status-unknown.t.
+
+2026-11-25 20:26 t/14: signal-death block now calls exit_status() a second time under with_timeout(10): returns without timeout and is still -1 (2 new tests, file 9 -> 11). Mutant (XS returns 0 on 2nd call, in a /tmp build copy only) fails test 6; reverted/never in tree. dzil test PASS, 17 files / 250 tests, t/14 ran (not skip_all).
+
+2026-11-25 20:27 Committed 3ab53ba
