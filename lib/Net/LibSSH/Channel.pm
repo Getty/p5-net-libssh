@@ -204,18 +204,40 @@ session has been disconnected (see L<Net::LibSSH/disconnect>).
 
   my $rc = $ch->exit_status;
 
-Returns the exit status of the executed command. The supported order is to
-read all output first; called before that, this returns C<-1> until the
-remote process has exited.
+Returns the exit status of the executed command, or C<-1> when there is no
+exit code to report. It does not poll and return at once: the call waits for
+the remote side to report the exit status, and returns C<-1> only if that
+does not happen. The supported order is to read all output first.
 
-Measured against libssh 0.10.6: C<ssh_channel_get_exit_status> pumps the
-session's own packet loop while it waits, so calling C<exit_status> before
-draining the output still returns the correct exit code there, and does not
-discard what has not been read yet — a later C<read> still returns it in
-full. That is behaviour of the libssh build under test, not a portable
-guarantee; a build that blocks instead of pumping the loop would hang here
-rather than return C<-1>. Keep reading output before checking
-C<exit_status> as the supported order regardless.
+C<-1> has two causes, and the return value alone does not tell them apart:
+
+=over 4
+
+=item the process has not exited yet
+
+The session C<timeout> option (see
+L<< option|Net::LibSSH/"option($key, $value)" >>) ran out before the exit
+status arrived. Without that option this module sets no timeout of its own,
+so nothing bounds the wait; set one if a stuck remote command must not hold
+the caller. With C<< timeout => 1 >>, a call made while the command is still
+running returns C<-1> after about that second, and the C<-1> does not stick:
+asking again once the process has exited returns its real code.
+
+=item the process was killed by a signal
+
+A command that dies from a signal (C<kill -9 $$>) never reports an exit
+status, so there is no code to return and the answer is C<-1>. Waiting longer
+does not turn it into a code, so a loop that retries on C<-1> needs an upper
+bound of its own.
+
+=back
+
+Calling C<exit_status> before draining the output still returns the correct
+exit code in the test suite, and does not discard what has not been read yet:
+a later C<read> returns it in full, for a few bytes as for 300000. That is
+observed behaviour, not a guarantee, and a libssh that blocked here would
+hang instead of returning; keep reading output before checking
+C<exit_status> as the supported order.
 
 Croaks if the channel has already been closed (see L</close>), or if its
 session has been disconnected (see L<Net::LibSSH/disconnect>). Note that
