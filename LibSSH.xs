@@ -633,7 +633,17 @@ exit_status(self)
     Net::LibSSH::Channel self
   CODE:
     nlss_channel_check_open(aTHX_ self, "Net::LibSSH::Channel::exit_status");
+#if LIBSSH_VERSION_INT >= SSH_VERSION_INT(0, 11, 0)
+    /* 0.11.0 deprecated ssh_channel_get_exit_status() and reduced it to this
+       call with the signal and core-dump outputs NULL'd: any rc but SSH_OK,
+       SSH_AGAIN included, becomes -1. The same mapping is kept here, so the
+       answer does not depend on which side of 0.11.0 the build landed. */
+    uint32_t code;
+    RETVAL = (ssh_channel_get_exit_state(self->channel, &code, NULL, NULL)
+              == SSH_OK) ? (int) code : -1;
+#else
     RETVAL = ssh_channel_get_exit_status(self->channel);
+#endif
   OUTPUT:
     RETVAL
 
