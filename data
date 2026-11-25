@@ -1,0 +1,29 @@
+---
+claimed_at: 2026-11-25T20:27:22Z
+claimed_by: p5-net-libssh
+class: standard
+completed: 2026-11-25T20:27:27Z
+created: 2026-11-25T20:11:14Z
+depends_on:
+- 15
+id: 16
+priority: low
+started: 2026-11-25T20:27:27Z
+status: done
+tags:
+- pod
+title: 'Channel POD: exit_status still says measured against libssh 0.10.6'
+updated: 2026-11-25T20:27:27Z
+---
+
+lib/Net/LibSSH/Channel.pm, =head2 exit_status, says: "Measured against libssh 0.10.6: C<ssh_channel_get_exit_status> pumps the session's own packet loop ...". The release now builds against Alien::libssh 0.003 = libssh 0.12.2 (share build), where t/06-exit-status-ordering.t is green as well, and after k15 exit_status() calls ssh_channel_get_exit_state on libssh >= 0.11 and only falls back to ssh_channel_get_exit_status below that.
+
+Done when the paragraph names what is actually called and what was actually measured, verified against LibSSH.xs after k15 and against the t/06 run, without promising more than the test shows (still: drain output first is the supported order). Only this paragraph; no other POD churn.
+
+Scope widened by the coordinator to the whole =head2 exit_status section (still Channel.pm only): k15's worker found that (a) without option(timeout => N) exit_status() waits until the process exits and only returns -1 early once a timeout is set, and (b) a process killed by a signal gets -1 permanently -- neither is in the POD, and the opening 'returns -1 until the remote process has exited' reads as if it never blocks. Covered by t/14-exit-status-unknown.t (new in k15) and t/06.
+
+POD rewritten (=head2 exit_status only); podchecker OK on the dzil-built file. One claim waits on a test: 'waiting longer does not turn it into a code' after a signal death -- t/14 makes only one call there; test-writer adds a second-call assertion under k15 before the commit.
+
+POD done, pod syntax OK; commit together with k15 once t/14 asserts the repeated -1 after signal death.
+
+2026-11-25 20:27 Committed b4f7696
