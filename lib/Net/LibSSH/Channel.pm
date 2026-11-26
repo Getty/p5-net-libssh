@@ -1,7 +1,7 @@
 # ABSTRACT: SSH exec channel for Net::LibSSH
 
 package Net::LibSSH::Channel;
-our $VERSION = '0.005';
+our $VERSION = '0.006';
 use strict;
 use warnings;
 
