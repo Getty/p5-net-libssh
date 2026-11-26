@@ -1,6 +1,6 @@
 Revision history for Net-LibSSH
 
-{{$NEXT}}
+0.005     2026-11-26 04:01:17Z
   - Fix segfault when a thread is created while a session, channel or SFTP
     object is alive: the objects are no longer cloned into the new thread
     and are not usable there, so the parent's connection is freed only once
